@@ -1,0 +1,4 @@
+.stagecast/
+site/
+*.cast
+.DS_Store

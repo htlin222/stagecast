@@ -1,0 +1,59 @@
+# One file describes the whole recording: what it is, what the chapters are,
+# and how each one proves it finished.
+
+[project]
+name    = "meta-pipe"
+title   = "A network meta-analysis, start to finish"
+blurb   = "Neoadjuvant anti-HER2 therapy in early breast cancer — ten gated stages, typed, unedited"
+workdir = "."                     # where the agent runs
+repo    = "https://github.com/htlin222/meta-pipe"
+
+# Shown in the header. Purely descriptive; nothing reads them back.
+facts = [
+  { value = "2,756", label = "screened" },
+  { value = "7",     label = "trials"   },
+  { value = "1,567", label = "patients" },
+]
+
+[recording]
+cols       = 118                  # 16:9 once the cell aspect is accounted for
+rows       = 28                   # see docs/DESIGN.md § The terminal
+agent      = "claude --dangerously-skip-permissions"
+idle_limit = 2                    # seconds; longer waits compress to this
+socket     = "stagecast"
+
+# Each stage is one chapter. `verify` runs with the working directory at
+# `project.workdir` and decides, on its own, whether the stage finished:
+# a passing check is the completion signal, never a guess about idleness.
+[[stage]]
+id      = "01"
+name    = "Protocol"
+prompt  = "prompts/01-protocol.md"
+stall   = "70m"
+verify  = "ls 01_protocol/*feasibility* >/dev/null 2>&1"
+note    = "Feasibility, PICO, eligibility — written before a single record is screened."
+
+[[stage]]
+id      = "02"
+name    = "Search"
+prompt  = "prompts/02-search.md"
+stall   = "60m"
+verify  = "test -s 02_search/dedupe.bib"
+note    = "Three databases, deduplicated."
+
+[site]
+# Emphasised in the brief. Applied in the page, never in the file that was sent:
+# the prompts go to the agent verbatim, and marking them up for display would
+# change what the recording shows being asked.
+emphasise = [
+  "不要編造任何研究數據",
+  "缺漏可以接受，編造不行",
+  "結果不顯著就寫不顯著",
+]
+
+about = """
+<p>What you see on screen is what a person would type. Nobody sits at a terminal
+for three hours, so a second agent session sends each message and waits for the
+artefact that stage was supposed to produce, refusing to advance until the check
+passes. It types; it does not decide.</p>
+"""

@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# stagecast — record an agent working, publish it as a chaptered site.
+#
+#   stagecast record [--only ID]   record the stages that are not done
+#   stagecast build                assemble, trim, redact, render the site
+#   stagecast verify [URL]         drive the published page in a real browser
+#   stagecast all                  record, build
+#
+# Reads ./stagecast.toml. See docs/DESIGN.md for the layout and type, and
+# docs/LESSONS.md for why each rule is there.
+set -uo pipefail
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")" && pwd)"
+CFG="${STAGECAST_CONFIG:-stagecast.toml}"
+[ -f "$CFG" ] || { printf 'no %s here\n' "$CFG" >&2; exit 2; }
+
+SC_BASE="$(cd "$(dirname "$CFG")" && pwd)"; export SC_BASE
+STATE="$SC_BASE/.stagecast"; mkdir -p "$STATE"
+export SC_PLAN="$STATE/plan.tsv"
+eval "$(uv run --no-project "$ROOT/tools/plan.py" "$CFG" "$SC_PLAN")"
+export SC_COLS SC_ROWS SC_AGENT SC_IDLE SC_SOCKET SC_NAME
+export SC_WORKDIR="$SC_BASE/$SC_WORKDIR"
+export SC_OUT="$STATE/recording"
+OUTDIR="${STAGECAST_OUT:-$SC_BASE/site}"
+
+cmd="${1:-all}"; shift || true
+[ "${1:-}" = "--only" ] && { export SC_ONLY="${2:?}"; shift 2; }
+
+case "$cmd" in
+  record) bash "$ROOT/lib/record.sh" ;;
+  build)
+    # Clearing first is not tidiness: a stale page is indistinguishable from a
+    # fresh one. See docs/LESSONS.md § Process.
+    rm -rf "$OUTDIR/casts"; mkdir -p "$OUTDIR/casts"
+    uv run --no-project "$ROOT/tools/restore_real.py" "$SC_OUT"
+    for f in "$SC_OUT"/seg-*.cast; do
+      [ -e "$f" ] || continue
+      id="$(basename "$f" .cast | sed -E 's/^seg-[0-9]+-step//')"
+      cp "$f" "$OUTDIR/casts/stage-$id.cast"
+    done
+    uv run --no-project "$ROOT/tools/trim_casts.py" "$OUTDIR/casts"
+    # Never publish a recording unscanned: a terminal keeps whatever was on it.
+    uv run --no-project "$ROOT/tools/redact.py" "$OUTDIR/casts"
+    uv run --no-project "$ROOT/tools/build_site.py" "$CFG" "$OUTDIR" ;;
+  verify)
+    uv run --with playwright --no-project "$ROOT/tools/verify_site.py" \
+      "${1:-http://localhost:8000/}" "$STATE/site-check" ;;
+  all) "$0" record && "$0" build ;;
+  *) sed -n '2,12p' "$ROOT/stagecast" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
