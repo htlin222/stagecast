@@ -23,6 +23,29 @@ stage sat for 84 minutes with its figures already written.
 when its `verify` command passes, and at no other time. `stagecast` polls the
 check; the agent's screen is not consulted.
 
+### Ask the agent's runtime when a turn ends — do not ask the screen
+
+A Stop hook fires the moment a turn ends. That is the one question the pane
+genuinely cannot answer, and a hook answers it exactly.
+
+It is not the same as a sentinel file, and the difference matters on camera. A
+sentinel has to be *asked for* — "when you are finished, write `01.done`" — so
+the machinery appears in every prompt and the recording reads like a work order
+rather than someone using the tool. A hook is configuration: invisible to the
+recording, impossible to forget, impossible to write early.
+
+Use both signals, and keep them doing different jobs:
+
+| | answers |
+|---|---|
+| Stop hook | did the turn **end** |
+| `verify` | did it **produce** what it was meant to |
+
+The hook says when to look; the check says whether to advance. A turn that ends
+with a failing check is a stage that stopped short — or stopped to ask — and
+saying so immediately is better than spending the stall budget to find out.
+`hooks/turn-ended.sh` is the hook; registering it is three lines of settings.
+
 ### A passing check ends the wait immediately
 
 Waiting out a quiet period "to be safe" after the check already passes buys no
@@ -52,6 +75,37 @@ them in one file, as `stagecast.toml` does, makes the drift visible.
 ---
 
 ## Recording
+
+### The prompt has to arrive intact, and be legible afterwards
+
+Three separate things, each of which was wrong once.
+
+**It must arrive as it was written.** `tmux send-keys -l` swallows newlines, so a
+multi-paragraph prompt lands as one run-on line. Send it with a bracketed paste —
+`load-buffer` then `paste-buffer -p` — and give it a second before Enter.
+
+**It is in the cast, even when it looks like it is not.** Claude Code shows
+`Pasting text…` while the paste lands and renders the whole message immediately
+after. Searching a finished cast for a phrase from the prompt will find it. The
+problem is never that it was lost.
+
+**It is unreadable in passing.** At playback speed it goes by in seconds, and the
+moment the agent answers it scrolls away — so the one thing that explains a
+chapter is the one thing nobody can read. Hence the brief: every chapter opens on
+its message, full bleed, with START handing over to the player. It also gives a
+viewer something to copy, which for a demo that is teaching a method is worth
+more than the video.
+
+**Emphasis goes in the page, never in the file that was sent.** The prompts reach
+the agent verbatim; adding `**bold**` for display would mean the recording shows
+something other than what was asked. `stagecast.toml` carries the phrases to
+emphasise; the renderer matches them.
+
+One more, learned the expensive way: keep the machinery *out* of the prompt. An
+early version appended "when you are finished write `01.done`" to every message,
+and the result read like a work order in every chapter. The turn-end signal
+belongs in a hook, the completion test belongs in `verify`, and the prompt should
+contain nothing a person would not have typed.
 
 ### Record one segment per stage
 

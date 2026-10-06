@@ -1,0 +1,58 @@
+# A smoke test you can run in a minute.
+#
+# The stages do real work — they write files and the checks read them back — so
+# what you watch is a genuine recording of a genuine process. It is simply a
+# very small one. Nothing here imitates an agent; the point is to prove the
+# machinery, not to look impressive.
+
+[project]
+name    = "stagecast"
+title   = "a sixty-second smoke test"
+blurb   = "Three tiny stages, recorded for real, to prove the machinery end to end"
+workdir = "work"
+repo    = "https://github.com/htlin222/stagecast"
+
+facts = [
+  { value = "3",  label = "stages"   },
+  { value = "~60", label = "seconds" },
+]
+
+[recording]
+cols       = 118
+rows       = 28
+agent      = "bash --noprofile --norc"
+idle_limit = 2
+socket     = "stagecast-demo"
+
+[[stage]]
+id     = "01"
+name   = "Make something"
+prompt = "prompts/01.txt"
+stall  = "3m"
+verify = "test -s notes.md"
+note   = "Writes a file. The check reads it back — that, and only that, is what advances the run."
+
+[[stage]]
+id     = "02"
+name   = "Check it"
+prompt = "prompts/02.txt"
+stall  = "3m"
+verify = "grep -q 'lines' report.txt"
+note   = "Counts what the last stage wrote. A stage that claimed to have written it would not get past this."
+
+[[stage]]
+id     = "03"
+name   = "Say what happened"
+prompt = "prompts/03.txt"
+stall  = "3m"
+verify = "test -s SUMMARY.md"
+note   = "Writes the summary a reader would want, and the check insists it is not empty."
+
+[site]
+emphasise = ["the check reads it back", "not the agent's word for it"]
+about = """
+<p>Three stages that write files and read them back. Small on purpose: what is
+being demonstrated is that a stage advances when its check passes and at no
+other time — <b>not the agent's word for it</b>.</p>
+<p>Run it yourself with <code>stagecast demo</code>.</p>
+"""

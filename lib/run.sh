@@ -21,9 +21,25 @@ tmux -L "$S" paste-buffer -p -t "$S"; sleep 2
 tmux -L "$S" send-keys -t "$S" Enter
 say "▶ $ID sent; stalls after ${STALL}s without output"
 
+# If a Stop hook is installed it tells us exactly when the turn ended, which the
+# pane cannot: the glyph Claude Code animates while working is also the one it
+# prints in the line it leaves when a turn ENDS. The hook says when to look; the
+# check still decides whether to advance. See hooks/turn-ended.sh.
+TURN="${STAGECAST_STATE:-$SC_BASE/.stagecast}/turn-ended"
+turn_mark="$(cat "$TURN" 2>/dev/null || echo 0)"
+
 last_change=$(date +%s); last_rev=""
 while :; do
   verify && { say "✓ $ID complete and verified"; exit 0; }
+  now_mark="$(cat "$TURN" 2>/dev/null || echo 0)"
+  if [ "$now_mark" != "$turn_mark" ]; then
+    turn_mark="$now_mark"
+    # The turn ended and the check does not pass. That is a stage that stopped
+    # short -- or stopped to ask -- and it is worth saying so now rather than
+    # burning the stall budget finding out.
+    say "⚠ $ID — turn ended but the check still fails"
+    exit 3
+  fi
   alive  || { say "✖ $ID — the terminal went away"; exit 5; }
   rev="$(tmux -L "$S" capture-pane -p -t "$S" 2>/dev/null | cksum | cut -d' ' -f1)"
   if [ "$rev" != "$last_rev" ]; then last_rev="$rev"; last_change=$(date +%s)
