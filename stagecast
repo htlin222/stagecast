@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # stagecast — record an agent working, publish it as a chaptered site.
 #
+#   stagecast init [DIR]           scaffold stagecast.toml from a prompt directory
 #   stagecast record [--only ID]   record the stages that are not done
 #   stagecast build                assemble, trim, redact, lint, render the site
 #   stagecast lint [DIR]           check the recordings for harness leaks
@@ -13,6 +14,11 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")" && pwd)"
 CFG="${STAGECAST_CONFIG:-stagecast.toml}"
+# init is what you run when there is no config yet, so it comes before the check.
+if [ "${1:-}" = "init" ]; then
+  shift
+  exec uv run --no-project "$ROOT/tools/init_project.py" "${1:-prompts}" "$CFG"
+fi
 [ -f "$CFG" ] || { printf 'no %s here\n' "$CFG" >&2; exit 2; }
 
 SC_BASE="$(cd "$(dirname "$CFG")" && pwd)"; export SC_BASE

@@ -390,3 +390,14 @@ was written to catch the bug rather than in the bug:
 Without the fixture, a lint that matches nothing and a lint that found nothing
 are the same output.
 
+### Scaffold everything except the check
+
+`stagecast init` writes a config from a directory of prompts: stage ids and
+names off the filenames, every other field a `TODO`. It deliberately cannot
+write `verify`. A check guessed from a filename would pass for the wrong reason,
+and a stage that advances on the wrong reason is the single failure this whole
+framework exists to prevent.
+
+**Rule.** `record` refuses while any check is still a TODO, and names the stages.
+Scaffolding that quietly produced a plausible check would be worse than none.
+

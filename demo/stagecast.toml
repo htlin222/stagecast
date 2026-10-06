@@ -2,8 +2,13 @@
 #
 # The stages do real work — they write files and the checks read them back — so
 # what you watch is a genuine recording of a genuine process. It is simply a
-# very small one. Nothing here imitates an agent; the point is to prove the
-# machinery, not to look impressive.
+# very small one.
+#
+# The target is worker.sh: it reads one instruction, matches a keyword, and runs
+# one fixed step. There is no model behind it and no API key needed. It does not
+# imitate an agent's judgement, and nothing it prints is dressed up to look like
+# thinking — because what the demo is proving is the machinery *around* the
+# target, which is the same whether that target is this or Claude Code.
 
 [project]
 name    = "stagecast"
@@ -20,15 +25,16 @@ facts = [
 [recording]
 cols       = 118
 rows       = 28
-agent      = "bash --noprofile --norc"
+agent      = "bash --noprofile --norc ../worker.sh"
 idle_limit = 2
 socket     = "stagecast-demo"
-# bash reads bracketed paste, so the markers are fine. What it does not want is
-# the Escape that clears a TUI, nor Claude Code's slash command to leave: ESC
-# then "/" is readline's filename completion, which once completed to the one
-# file in the directory and ran it.
-clear_key = ""
-quit      = "exit"
+# The worker reads with `read -r`, which does not consume the bracketed-paste
+# markers, so they would be echoed. It wants no clear key either — and leaves on
+# `exit`, not on a slash command: sent to a shell, ESC then "/" is readline's
+# filename completion, which once completed to the one file present and ran it.
+bracketed_paste = false
+clear_key       = ""
+quit            = "exit"
 
 [[stage]]
 id     = "01"
@@ -63,7 +69,10 @@ emphasise = ["the check reads it back"]
 about = """
 <p>Three stages that write files and read them back. Small on purpose: what is
 being demonstrated is that a stage advances when its check passes and at no
-other time — <b>not the agent's word for it</b>.</p>
+other time — <b>not the target's word for it</b>.</p>
+<p>The thing on the other end is <code>worker.sh</code>, which matches a keyword
+and runs one fixed step. No model, no API key, nothing imitating judgement. The
+machinery around it is the same machinery a three-hour Claude Code run uses.</p>
 <p>Run it yourself with <code>stagecast demo</code>.</p>
 """
 

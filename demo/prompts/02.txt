@@ -1,1 +1,1 @@
-printf 'stage 02 — counting what stage 01 left\n'; sleep 1; printf 'notes.md has %s lines\n' "$(wc -l < notes.md | tr -d ' ')" | tee report.txt
+Count the lines in the notes file and record the number in a report I can read back later.

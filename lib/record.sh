@@ -8,6 +8,18 @@ mkdir -p "$OUT/_aborted"
 n=$(find "$OUT" -maxdepth 1 -name 'seg-*.cast' 2>/dev/null | wc -l | tr -d ' ')
 say() { printf '%s %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 
+# A scaffolded check is not a check. `init` leaves TODO in every verify, and a
+# run that started anyway would advance on nothing — which is the one thing this
+# framework exists to prevent.
+# grep -c prints 0 and *exits 1* when it matches nothing, so `|| echo 0` appends
+# a second zero and the test sees "0\n0".
+todo="$(grep -c 'TODO:' "$PLAN" 2>/dev/null || true)"; todo="${todo:-0}"
+if [ "$todo" -gt 0 ]; then
+  say "✖ $todo stage(s) still have a TODO check — fill them in before recording"
+  grep 'TODO:' "$PLAN" | cut -f1,2 | sed 's/^/    /'
+  exit 2
+fi
+
 while IFS=$'\t' read -r id _ _ _; do
   [ -n "${SC_ONLY:-}" ] && [ "$id" != "$SC_ONLY" ] && continue
   n=$((n+1)); cast="$(printf '%s/seg-%03d-step%s.cast' "$OUT" "$n" "$id")"

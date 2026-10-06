@@ -48,12 +48,20 @@ output already on disk. See [docs/LESSONS.md](docs/LESSONS.md).
 brew install asciinema tmux        # and agg, if you want GIFs
 uv tool install playwright         # for `stagecast verify`
 
-cp -r example/ my-run && cd my-run
-$EDITOR stagecast.toml             # chapters, prompts, checks
+mkdir my-run && cd my-run
+mkdir prompts && $EDITOR prompts/01-….md   # one file per chapter, in order
+stagecast init                     # scaffolds stagecast.toml from them
+$EDITOR stagecast.toml             # fill in the checks — see below
 stagecast record                   # one recorded session per stage
 stagecast build                    # restore, trim, redact, render
 stagecast verify https://…         # drive the published page in a browser
 ```
+
+`init` reads the stage id and name off each filename and writes everything but
+one field. `verify` is left as `TODO`, and `record` refuses to start while any
+remain — a check inferred from a filename would pass for the wrong reason, which
+is worse than not having one. That field is the whole discipline, so it is the
+one you write yourself.
 
 `build` writes `site/` — a single page, its casts, and the prompts as data.
 Host it anywhere static.

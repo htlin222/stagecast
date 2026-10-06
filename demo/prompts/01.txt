@@ -1,1 +1,1 @@
-printf 'stage 01 — writing notes.md\n'; printf '# Notes\n\nThe check reads it back.\nNothing advances on a claim.\n' > notes.md; sleep 1; printf 'wrote %s lines\n' "$(wc -l < notes.md | tr -d ' ')"; ls -l notes.md
+Write a notes file saying the check reads it back, and that nothing advances on a claim. Then tell me how many lines it has.
