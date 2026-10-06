@@ -23,6 +23,12 @@ rows       = 28
 agent      = "bash --noprofile --norc"
 idle_limit = 2
 socket     = "stagecast-demo"
+# bash reads bracketed paste, so the markers are fine. What it does not want is
+# the Escape that clears a TUI, nor Claude Code's slash command to leave: ESC
+# then "/" is readline's filename completion, which once completed to the one
+# file in the directory and ran it.
+clear_key = ""
+quit      = "exit"
 
 [[stage]]
 id     = "01"
@@ -49,10 +55,19 @@ verify = "test -s SUMMARY.md"
 note   = "Writes the summary a reader would want, and the check insists it is not empty."
 
 [site]
-emphasise = ["the check reads it back", "not the agent's word for it"]
+# These stages are seconds long by design, so the empty-chapter guard has to be
+# told. A real run leaves it at its default of 30.
+min_chapter_seconds = 3
+
+emphasise = ["the check reads it back"]
 about = """
 <p>Three stages that write files and read them back. Small on purpose: what is
 being demonstrated is that a stage advances when its check passes and at no
 other time — <b>not the agent's word for it</b>.</p>
 <p>Run it yourself with <code>stagecast demo</code>.</p>
 """
+
+[lint]
+# The demo is meant to be pristine: anything the target could not run is a
+# defect here, not background noise.
+strict = true

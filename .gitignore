@@ -1,4 +1,14 @@
 .stagecast/
 site/
-*.cast
 .DS_Store
+
+# Recordings are build output, not source.
+*.cast
+# — except the ones the lint is tested against. These are the defects verbatim;
+# without them a lint that stopped matching would look exactly like a pass.
+!tests/fixtures/*.cast
+
+# What the demo's stages write when it runs.
+demo/work/notes.md
+demo/work/report.txt
+demo/work/SUMMARY.md

@@ -35,6 +35,11 @@ def main() -> int:
     casts = out / "casts"
     out.mkdir(parents=True, exist_ok=True)
 
+    # A publish of ten one-second stubs once passed every control assertion,
+    # because the controls worked perfectly on top of an empty recording. The
+    # floor is the guard. A smoke test may lower it; a real run should not.
+    floor = cfg.get("site", {}).get("min_chapter_seconds", 30)
+
     stages, prompts = [], {}
     for st in cfg.get("stage", []):
         cast = casts / f"stage-{st['id']}.cast"
@@ -42,9 +47,9 @@ def main() -> int:
             print(f"  no cast for stage {st['id']}, skipping", file=sys.stderr)
             continue
         secs = played_seconds(cast, cfg.get("recording", {}).get("idle_limit", 2))
-        if secs < 30:
-            print(f"  stage {st['id']} is {secs}s — an empty chapter, refusing",
-                  file=sys.stderr)
+        if secs < floor:
+            print(f"  stage {st['id']} is {secs}s, under the {floor}s floor — "
+                  f"an empty chapter, refusing", file=sys.stderr)
             return 1
         stages.append({"id": st["id"], "t": secs, "name": st["name"],
                        "note": st.get("note", "")})
@@ -60,6 +65,13 @@ def main() -> int:
     facts = "".join(
         f'<div><b>{f["value"]}</b><span>{f["label"]}</span></div>'
         for f in proj.get("facts", []))
+    # An emphasis phrase that matches no prompt is a typo, and the bolding then
+    # fails in total silence, so say so here rather than let it ship unnoticed.
+    joined = " ".join(prompts.values()).lower()
+    for k in cfg.get("site", {}).get("emphasise", []):
+        if k.lower() not in joined:
+            print(f"  warning: emphasise {k!r} appears in no prompt", file=sys.stderr)
+
     html = (ROOT / "site/template.html").read_text()
     for key, val in {
         "{{TITLE}}": f'{proj.get("name","")} — {proj.get("title","")}',

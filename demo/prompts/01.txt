@@ -1,3 +1,1 @@
-printf 'stage 01 — writing notes.md\n'; sleep 1
-printf '# Notes\n\nThe check reads it back.\nNothing advances on a claim.\n' > notes.md
-sleep 1; printf 'wrote %s lines\n' "$(wc -l < notes.md | tr -d ' ')"; ls -l notes.md
+printf 'stage 01 — writing notes.md\n'; printf '# Notes\n\nThe check reads it back.\nNothing advances on a claim.\n' > notes.md; sleep 1; printf 'wrote %s lines\n' "$(wc -l < notes.md | tr -d ' ')"; ls -l notes.md

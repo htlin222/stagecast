@@ -1,4 +1,1 @@
-printf 'stage 02 — counting what stage 01 left\n'; sleep 1
-n=$(wc -l < notes.md | tr -d ' ')
-printf 'notes.md has %s lines\n' "$n" | tee report.txt
-sleep 1; cat report.txt
+printf 'stage 02 — counting what stage 01 left\n'; sleep 1; printf 'notes.md has %s lines\n' "$(wc -l < notes.md | tr -d ' ')" | tee report.txt

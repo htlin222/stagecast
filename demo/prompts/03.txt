@@ -1,3 +1,1 @@
-printf 'stage 03 — summarising\n'; sleep 1
-{ printf '# Summary\n\n'; cat report.txt; printf '\nEach stage was gated on a file, not on a report.\n'; } > SUMMARY.md
-sleep 1; cat SUMMARY.md
+printf 'stage 03 — summarising\n'; sleep 1; { printf '# Summary\n\n'; cat report.txt; printf '\nEach stage was gated on a file, not on a report.\n'; } > SUMMARY.md; cat SUMMARY.md

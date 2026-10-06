@@ -1,0 +1,9 @@
+{"version": 2, "width": 118, "height": 28, "timestamp": 0}
+[0.0, "o", "\u001b[?2004hbash-5.2$ "]
+[0.4, "o", "\u001b[200~printf 'stage 01'\u001b[201~\r\n"]
+[0.8, "o", "bash: [200~printf: command not found\r\n"]
+[1.2000000000000002, "o", "\u001b[?2004hbash-5.2$ "]
+[1.6, "o", "\u001bwrote 4 lines\r\n"]
+[2.0, "o", "bash-5.2$ notes.md exit\r\n"]
+[2.4000000000000004, "o", "bash: notes.md: command not found\r\n"]
+[2.8000000000000003, "o", "grep: invalid option -- P\r\n"]

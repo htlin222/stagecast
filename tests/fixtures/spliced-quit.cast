@@ -1,0 +1,6 @@
+{"version": 2, "width": 118, "height": 28, "timestamp": 0}
+[0.0, "o", "\u001b[?2004hbash-5.2$ printf 'stage 01'\r\n"]
+[0.4, "o", "stage 01 \u2014 writing notes.md\r\n"]
+[0.8, "o", "exitwrote 4 lines\r\n"]
+[1.2000000000000002, "o", "-rw-r--r--@ 1 htlin  staff  63 Oct  6 23:06 notes.md\r\n"]
+[1.6, "o", "bash-5.2$ exit\r\nexit\r\n"]

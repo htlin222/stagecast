@@ -4,7 +4,7 @@
 set -uo pipefail
 PLAN="${SC_PLAN:?}"; ID="${1:?stage id}"
 # Slurped once: the table may be edited while a long run is in flight.
-ROW="$(grep -P "^$ID\t" "$PLAN" || grep "^$ID	" "$PLAN")"
+ROW="$(grep "^$ID$(printf '\t')" "$PLAN")"   # BSD grep has no -P
 IFS=$'\t' read -r _ PROMPT STALL CHECK <<< "$ROW"
 S="${SC_SOCKET:-stagecast}"; W="${SC_WORKDIR:-.}"
 say() { printf '%s %s\n' "$(date -u +%H:%M:%S)" "$*"; }
@@ -16,8 +16,14 @@ if verify; then say "⏭ $ID already satisfied"; exit 0; fi
 # Bracketed paste: send-keys -l swallows newlines and a multi-paragraph prompt
 # arrives as one run-on line.
 printf '%s' "$(cat "$SC_BASE/$PROMPT")" | tmux -L "$S" load-buffer -
-tmux -L "$S" send-keys -t "$S" Escape 2>/dev/null; sleep 1
-tmux -L "$S" paste-buffer -p -t "$S"; sleep 2
+# Clears a TUI's pending state; empty for a target that reads ESC as a prefix.
+[ -n "${SC_CLEAR-Escape}" ] && { tmux -L "$S" send-keys -t "$S" "${SC_CLEAR-Escape}" 2>/dev/null; sleep 1; }
+if [ "${SC_PASTE:-1}" = "1" ]; then
+  tmux -L "$S" paste-buffer -p -t "$S"
+else
+  tmux -L "$S" paste-buffer -t "$S"      # the target does not strip the markers
+fi
+sleep 2
 tmux -L "$S" send-keys -t "$S" Enter
 say "▶ $ID sent; stalls after ${STALL}s without output"
 

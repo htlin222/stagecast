@@ -25,8 +25,22 @@ while IFS=$'\t' read -r id _ _ _; do
     sleep 2
   done
   bash "$HERE/run.sh" "$id"; rc=$?
-  tmux -L "$S" send-keys -t "$S" Escape 2>/dev/null; sleep 1
-  tmux -L "$S" send-keys -t "$S" "/exit" 2>/dev/null; sleep 1
+  # A check passing does not mean the output has stopped. The check fires the
+  # moment the artefact exists, while the target is still printing what it did —
+  # so quitting here cut into the stream and left "exitwrote 4 lines" on screen.
+  # Wait for the pane to hold still before asking it to leave.
+  prev=""; still=0
+  for _ in $(seq 1 60); do
+    now="$(tmux -L "$S" capture-pane -p -t "$S" 2>/dev/null)"
+    if [ "$now" = "$prev" ]; then
+      still=$((still+1)); [ "$still" -ge "${SC_SETTLE:-3}" ] && break
+    else
+      still=0; prev="$now"
+    fi
+    sleep 1
+  done
+  [ -n "${SC_CLEAR-Escape}" ] && { tmux -L "$S" send-keys -t "$S" "${SC_CLEAR-Escape}" 2>/dev/null; sleep 1; }
+  tmux -L "$S" send-keys -t "$S" "${SC_QUIT:-/exit}" 2>/dev/null; sleep 1
   tmux -L "$S" send-keys -t "$S" Enter 2>/dev/null; sleep 4
   tmux -L "$S" kill-session -t "$S" 2>/dev/null
   [ "$rc" = 0 ] || { say "✖ stopped at stage $id (rc=$rc)"; exit "$rc"; }

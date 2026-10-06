@@ -278,3 +278,115 @@ indistinguishable from fresh ones.
 
 A fault obvious across eighteen slides is invisible slide by slide. Contact
 sheets, not spot checks.
+
+## Driving a target that is not Claude Code
+
+Every one of these was found by looking at the recording. The checks passed
+throughout — the files were written, the stages advanced — so nothing else could
+have caught them. The recording is the artefact; a green run that produces an
+ugly one has failed.
+
+### What you send to leave is part of the target, not of the driver
+
+The teardown sent `Escape` then `/exit`, which is how Claude Code is asked to
+quit. Sent to a plain shell, `ESC` followed by `/` is readline's **filename
+completion**: it completed to the one file in the working directory and ran it,
+leaving `bash: notes.md: command not found` at the end of the recording.
+
+The same `Escape`, sent *before* the prompt to clear a TUI's pending state, met
+the paste's own `\e[200~` and made readline insert the marker literally —
+`bash: [200~printf: command not found`. Both marks that had been blamed on
+bracketed paste came from the Escape.
+
+**Rule.** `clear_key` and `quit` are per-target, like `agent`. One setting, one
+meaning: `bracketed_paste` says whether to wrap the text, and nothing else.
+Diagnosing the symptom (turning the markers off) left the real cause in place.
+
+### `:-` treats empty as unset
+
+`${SC_CLEAR:-Escape}` substitutes the default when the variable is **empty**, not
+only when it is missing — so a target that asked for no clear key got `Escape`
+anyway. `${SC_CLEAR-Escape}` distinguishes the two.
+
+**Rule.** When empty is a legitimate value, use `-`, not `:-`, and test both the
+unset and the empty case.
+
+### `has-session` without `-t` asks about the whole socket
+
+A wait loop on `tmux -L sock has-session` never finished: unrelated sessions were
+living on that socket, so the answer was always yes. `lib/run.sh` passes `-t`;
+the loop that hung did not.
+
+**Rule.** Always name the session. A wait that cannot fail is not a wait.
+
+### BSD grep has no `-P`
+
+`grep -P "^$ID\t"` printed a usage error on every stage. A fallback hid the
+consequence, so it ran for weeks as noise nobody read. A literal tab needs no
+PCRE: `grep "^$ID$(printf '\t')"`.
+
+**Rule.** GNU-only flags do not belong in a tool people run on macOS.
+
+### A feature that fails by doing nothing must be made to speak
+
+Emphasis matched case-sensitively and in silence: the list said `the check reads
+it back`, the prompt said `The check reads it back`, and nothing bolded. Nothing
+was wrong enough to report.
+
+**Rule.** Matching ignores case, and `build` warns when an emphasis phrase
+appears in no prompt. The first thing the warning found was a real dead phrase.
+
+### A smoke test needs the guard it cannot satisfy
+
+The empty-chapter floor refused to publish the three-stage demo, correctly: its
+chapters are seconds long. A hard-coded 30 made the framework unable to
+demonstrate itself.
+
+**Rule.** `min_chapter_seconds`, defaulting to 30. A guard worth having is worth
+configuring rather than removing.
+
+### A check passing is not the output stopping
+
+The check fires the moment the artefact exists. The target is still printing
+what it did — so the teardown's keystrokes were spliced into the stream and the
+recording ended on `exitwrote 4 lines`. The stage was correct; the recording was
+not, and the recording is what ships.
+
+**Rule.** Wait for the pane to hold still (`SC_SETTLE`, default 3s unchanged)
+before asking the target to leave.
+
+## Lint the recording, not only the page
+
+Everything in the section above passed its stage check and was found by a person
+watching the playback. That is not a check — it does not survive the next person,
+or the next run. `tools/lint_casts.py` makes each one deterministic:
+
+| tier | meaning | on a hit |
+|---|---|---|
+| **leak** | only the harness can produce this shape | refuse to publish |
+| **noise** | the target produced it; a real session may do so legitimately | report, refuse only under `[lint] strict` |
+
+Each message names the setting that is wrong, not just the symptom. A lint
+nobody can act on gets switched off.
+
+### A lint needs a recording that is known to be broken
+
+`tests/fixtures/` holds the defective casts verbatim, and `tests/test_lint.sh`
+asserts the lint fails on them, passes on a clean one, and **names each shape
+separately** — a lint that catches one of four would otherwise look like a pass.
+
+It earned this three times in one sitting, and each time the fault was in what
+was written to catch the bug rather than in the bug:
+
+- the bare-ESC fixture used `ESC [ w`, which is a valid CSI a terminal consumes;
+  the real bytes were `ESC` then `w`, which is why the screen showed `^[wrote`
+- the bare-ESC rule excluded only `[()=>`, so it fired on every recording, because
+  bash sets the window title with OSC — `ESC ]`
+- the spliced-quit rule had a lookbehind rejecting anything after whitespace,
+  which rejected the line break, so **the recordings that had the defect were
+  reported clean**
+
+**Rule.** A check that has never failed on known-bad input has not been tested.
+Without the fixture, a lint that matches nothing and a lint that found nothing
+are the same output.
+

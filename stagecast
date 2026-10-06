@@ -2,7 +2,9 @@
 # stagecast — record an agent working, publish it as a chaptered site.
 #
 #   stagecast record [--only ID]   record the stages that are not done
-#   stagecast build                assemble, trim, redact, render the site
+#   stagecast build                assemble, trim, redact, lint, render the site
+#   stagecast lint [DIR]           check the recordings for harness leaks
+#   stagecast test                 run the framework's own checks
 #   stagecast verify [URL]         drive the published page in a real browser
 #   stagecast all                  record, build
 #
@@ -17,7 +19,7 @@ SC_BASE="$(cd "$(dirname "$CFG")" && pwd)"; export SC_BASE
 STATE="$SC_BASE/.stagecast"; mkdir -p "$STATE"
 export SC_PLAN="$STATE/plan.tsv"
 eval "$(uv run --no-project "$ROOT/tools/plan.py" "$CFG" "$SC_PLAN")"
-export SC_COLS SC_ROWS SC_AGENT SC_IDLE SC_SOCKET SC_NAME
+export SC_COLS SC_ROWS SC_AGENT SC_IDLE SC_SOCKET SC_NAME SC_PASTE SC_CLEAR SC_QUIT
 export SC_WORKDIR="$SC_BASE/$SC_WORKDIR"
 export SC_OUT="$STATE/recording"
 OUTDIR="${STAGECAST_OUT:-$SC_BASE/site}"
@@ -40,7 +42,15 @@ case "$cmd" in
     uv run --no-project "$ROOT/tools/trim_casts.py" "$OUTDIR/casts"
     # Never publish a recording unscanned: a terminal keeps whatever was on it.
     uv run --no-project "$ROOT/tools/redact.py" "$OUTDIR/casts"
+    # Lint the recording, not just the page. Every defect in docs/LESSONS.md
+    # § Driving a target that is not Claude Code passed its stage check and was
+    # caught by a person watching the playback; this is that, deterministically.
+    uv run --no-project "$ROOT/tools/lint_casts.py" "$CFG" "$OUTDIR/casts" || exit 1
     uv run --no-project "$ROOT/tools/build_site.py" "$CFG" "$OUTDIR" ;;
+  lint)
+    uv run --no-project "$ROOT/tools/lint_casts.py" "$CFG" "${1:-$SC_OUT}" ;;
+  test)
+    bash "$ROOT/tests/test_lint.sh" ;;
   verify)
     uv run --with playwright --no-project "$ROOT/tools/verify_site.py" \
       "${1:-http://localhost:8000/}" "$STATE/site-check" ;;

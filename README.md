@@ -58,6 +58,22 @@ stagecast verify https://…         # drive the published page in a browser
 `build` writes `site/` — a single page, its casts, and the prompts as data.
 Host it anywhere static.
 
+### Try it in five minutes
+
+```sh
+cd demo && ../stagecast all        # three real stages, about 5 minutes
+cd site && python3 -m http.server  # then open localhost:8000
+```
+
+The demo drives a plain `bash` rather than an agent, so it needs no API key and
+nothing is mocked: each stage writes a file and the next stage's check reads it
+back. It is the same machinery a three-hour run uses, small enough to watch.
+
+![the chapter brief, and the recording underneath](docs/screenshot-brief.png)
+
+Every chapter opens on the message it was sent — full width, keywords bold —
+and hands over to the player on START.
+
 ---
 
 ## What it does between record and publish
@@ -67,7 +83,8 @@ Host it anywhere static.
 | **restore** | keep the longest cast per stage. A skipped stage still opens and closes a session, leaving a one-second stub where the real recording was |
 | **trim** | cut from the last substantial output. A stalled stage is not idle — a spinner is an event — so `--idle-time-limit` cannot reach it. One segment ran 5,552 seconds of which 674 were work |
 | **redact** | scan every cast against `.env` and against token shapes, replacing with a marker **padded to the original length**. A real key was found in two casts minutes before they would have gone to a public repository |
-| **render** | measure each chapter's *played* length, refuse to publish one under 30 seconds, and fill the template |
+| **lint** | scan the recordings for shapes only the harness can leave — paste markers, a stray ESC, a quit spliced into output that had not finished. Each one passed its stage check and was found by eye; `tests/` keeps a known-broken cast so the lint cannot quietly stop matching |
+| **render** | measure each chapter's *played* length, refuse to publish one under `min_chapter_seconds` (30 by default), and fill the template |
 
 Emptiness is a failure mode, not an edge case: a publish of ten one-second stubs
 once passed every control assertion, because the controls worked perfectly on top
