@@ -1,0 +1,27 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Recording and preview tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq tmux pandoc poppler-utils
+          uv tool install asciinema==2.4.0
+      # The lint fixtures, post-processing, the hook, the checks, milestones,
+      # and continuous mode end to end against tests/fake_agent.py.
+      - name: stagecast test
+        run: ./stagecast test
+      # A fresh clone must be able to build: this is what failed when the
+      # template was ignored and never committed.
+      - name: Build the demo from the committed recording
+        run: |
+          cp -r tests/fixtures/demo-state demo/.stagecast
+          cd demo && ../stagecast build
+          test -s site/index.html && test -s site/casts/001.cast

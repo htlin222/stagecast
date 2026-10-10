@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Checks scoped to the run, for use in a stage's `verify`. On PATH while verify
+# runs, with STAGECAST_STATE pointing at the state directory.
+#
+#   stagecast-check answered ID       the turn that received stage ID's prompt has ended
+#   stagecast-check edited ID PREV    ...and the repo differs from when PREV's turn ended
+#   stagecast-check saved ID WORD     a tag or commit made AFTER stage ID's prompt was
+#                                     sent mentions WORD
+#   stagecast-check file GLOB...      at least one file matches (** is recursive)
+#   stagecast-check count N GLOB...   at least N files match
+#   stagecast-check fp                fingerprint of the repo (HEAD + working tree)
+#
+# Why scoped: in a repository with history, `git tag | grep -q review` passes on
+# a tag from an earlier chapter or an earlier take, and the stage "completes"
+# before the agent has done anything. A check must be able to fail.
+S="${STAGECAST_STATE:?stagecast-check runs inside a stage verify}"
+fp() {
+  { git rev-parse HEAD 2>/dev/null; git status --porcelain 2>/dev/null; git diff 2>/dev/null
+    git ls-files -o --exclude-standard -z 2>/dev/null | xargs -0 cat 2>/dev/null; } | cksum | cut -d' ' -f1
+}
+count() {
+  python3 - "$@" <<'PY'
+import glob, sys
+print(len({p for g in sys.argv[1:] for p in glob.glob(g, recursive=True)}))
+PY
+}
+sent_at() {   # epoch seconds at which stage $1's prompt was sent (the latest send)
+  python3 - "$S/markers.jsonl" "$1" <<'PY'
+import json, sys
+t = None
+try:
+    for line in open(sys.argv[1]):
+        try: d = json.loads(line)
+        except ValueError: continue
+        if d.get("id") == sys.argv[2]: t = int(d["t"])
+except FileNotFoundError: pass
+if t is not None: print(t)
+PY
+}
+case "${1:-}" in
+  fp)       fp ;;
+  answered) test -f "$S/answered/${2:?ID}" ;;
+  edited)   test -f "$S/answered/${2:?ID}" && test -f "$S/fp-${3:?PREV}" \
+              && [ "$(fp)" != "$(cat "$S/fp-$3")" ] ;;
+  saved)    since="$(sent_at "${2:?ID}")"; [ -n "$since" ] || exit 1
+            word="${3:?WORD}"
+            { git for-each-ref refs/tags --format='%(creatordate:unix)%09%(refname:short) %(contents:subject)' \
+                | awk -F'\t' -v s="$since" '$1 >= s { print $2 }'
+              git log --all --since="@$since" --format='%s%n%b'; } 2>/dev/null | grep -q -- "$word" ;;
+  file)     shift; [ "$(count "$@")" -ge 1 ] ;;
+  count)    n="${2:?N}"; shift 2; [ "$(count "$@")" -ge "$n" ] ;;
+  *)        sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac

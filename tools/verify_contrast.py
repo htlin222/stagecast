@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check that no glyph in a rendered frame is invisible against what is behind it.
 
-    uv run --with pillow --no-project live-demo/verify_contrast.py <png> [...]
+    uv run --with pillow --no-project tools/verify_contrast.py <png> [...]
 
 The white-background theme had ANSI colour 0 mapped to #ffffff. Colour 0 is
 black; it is what a TUI uses to write dark text on a coloured panel. Mapping it

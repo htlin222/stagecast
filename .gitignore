@@ -1,12 +1,23 @@
 .stagecast/
-site/
 .DS_Store
+__pycache__/
+.pytest_cache/
+tests/.tmp-*/
+
+# Build output — anchored to the projects' own site/ directories. A bare
+# `site/` rule once matched the framework's template directory too, so the
+# template was never committed and `build` failed on every fresh clone.
+/demo/site/
+/example/site/
+/tests/fixtures/*/site/
 
 # Recordings are build output, not source.
 *.cast
-# — except the ones the lint is tested against. These are the defects verbatim;
-# without them a lint that stopped matching would look exactly like a pass.
+# — except the ones the tests run against. These are the defects verbatim, and
+# a real recording to build from; without them a lint that stopped matching
+# would look exactly like a pass.
 !tests/fixtures/*.cast
+!tests/fixtures/**/*.cast
 
 # What the demo's stages write when it runs.
 demo/work/notes.md

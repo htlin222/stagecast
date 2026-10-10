@@ -1,0 +1,48 @@
+# A continuous-mode run against tests/fake_agent.py: one session, chapters as
+# markers, completion on the Stop hook AND the check. Used by tests/test_e2e.py.
+[project]
+name    = "continuous"
+title   = "one session, three chapters"
+workdir = "work"
+
+[recording]
+mode            = "continuous"
+agent           = "python3 -u ../../../fake_agent.py"
+socket          = "stagecast-e2e"
+cols            = 100
+rows            = 24
+turn_signal     = "hook"
+ready           = "for shortcuts"
+bracketed_paste = false
+clear_key       = ""
+quit            = "exit"
+settle          = 1
+poll            = 0.5
+
+[postprocess]
+head = 1
+foot = 1
+
+[site]
+min_chapter_seconds = 1
+
+[[stage]]
+id     = "01"
+name   = "Make one"
+prompt = "Please create one.txt for me"
+stall  = "1m"
+verify = "stagecast-check answered 01 && test -f one.txt"
+
+[[stage]]
+id     = "02"
+name   = "Make two"
+prompt = "Now the second file, please"
+stall  = "1m"
+verify = "test -f two.txt"
+
+[[stage]]
+id     = "03"
+name   = "Take a while"
+prompt = "slow: then create three.txt"
+stall  = "1m"
+verify = "stagecast-check answered 03 && test -f three.txt"

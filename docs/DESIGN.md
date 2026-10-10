@@ -11,24 +11,39 @@ knowingly; most were arrived at by changing them unknowingly first.
   stagecast.toml ── one file: the chapters, their prompts, their checks
          │
          ▼
-  ┌─ driver ──────────────────────────────────────────────┐
-  │  sends one prompt, waits for the CHECK, never advances │   ← lib/run.sh
-  │  until the artefact exists                             │
-  └───────────────────────────────────────────────────────┘
-         │ one tmux + asciinema session per stage
-         ▼
-  segments ── seg-001-step01.cast, seg-002-step02.cast, …
+  ┌─ driver ─────────────────────────────────────────────────┐
+  │  sends one prompt, waits for the turn that received it   │  ← tools/drive.py
+  │  to END (Stop hook) and for its CHECK to pass            │
+  └──────────────────────────────────────────────────────────┘
+         │                                  │
+         │ per-stage: one tmux + asciinema   │ continuous: one session for the
+         │ + agent session per stage, torn   │ whole run; each stage is the next
+         │ down after it                     │ message, nothing is /exit-ed
+         ▼                                  ▼
+  .stagecast/recording/take-*.cast   raw wall-clock time, no idle limit
+  .stagecast/markers.jsonl           when each prompt was sent   (driver)
+  .stagecast/turns.jsonl             when each turn ended, and   (hooks/turn_ended.py)
+                                     which prompt it answered
          │
-         │  restore ─ keep the longest cast per stage
-         │  trim    ─ cut from the last substantial output
-         │  concat  ─ offset timestamps, join into one
-         │  redact  ─ scan for credentials, pad replacements
+         │  postprocess ─ t=0 at ready, idle cap, time-lapse, answer hold,
+         │                end of take, markers, redaction       ← tools/postprocess.py
+         │  chapter     ─ one cast per chapter, opening on a
+         │                serialised screen snapshot            ← tools/vt.py
+         │  lint        ─ shapes only the harness can leave
          ▼
-  site ── chaptered player, one brief per chapter
+  site ── demo.cast, casts/NNN.cast, chapters.json, index.html, milestones/
          │
          ▼
-  verify ── a real browser clicks every control and reads pixels
+  verify ── a real browser clicks every control and reads what is drawn
 ```
+
+**Which mode.** `per-stage` for a target that is not an agent — the demo's
+`worker.sh`, a REPL — and whenever a repair should cost one chapter: every
+stage is a cold start. `continuous` for an agent: one conversation, so each
+chapter has the context of the ones before it, prompts can be as short as a
+person would type them, and the cast ends on the agent's last answer instead of
+a teardown. Chapters are then timestamps, written into the cast as asciinema
+markers.
 
 Two processes, deliberately. The **worker** is an ordinary agent session that
 knows nothing about being recorded. The **driver** sends each prompt and judges
@@ -36,8 +51,11 @@ each result. Nothing in the worker's prompt mentions sentinels, stages or
 recording — which is what lets the recording look like a person using the tool,
 because that is all it is.
 
-The driver's only completion signal is the stage's `verify` command. It never
-reads the worker's screen to decide anything. See `LESSONS.md § Completion`.
+The driver advances on two signals that do different jobs: the Stop hook says
+the turn that received *this* prompt ended, and the stage's `verify` says the
+work exists. It never reads the worker's screen to decide whether a stage is
+done. A target with no hook (`turn_signal = "settle"`) advances when its check
+passes and the pane holds still. See `LESSONS.md § Completion`.
 
 ---
 
@@ -69,8 +87,12 @@ So for a 16:9 frame, `cols / rows = 1.778 / 0.422 = 4.21`:
 
 Measure your own font before trusting these: render one frame, divide.
 
-`--idle-time-limit 2`: a stage that spends forty minutes fetching abstracts plays
-back in minutes without speeding up the typing.
+Recorded with `asciinema rec -i 86400` — raw time — and compressed afterwards
+(`[postprocess]`): idle gaps cap at 2 s, the middle of every turn plays at 8x
+while its first 20 s and last 15 s stay at 1x, and each finished answer is held
+8 s. A stage that spends forty minutes fetching abstracts plays back in minutes
+without speeding up the typing. The player is never given `idleTimeLimit`:
+compressing twice undoes the hold and drifts away from `chapters.json`.
 
 ---
 
@@ -107,7 +129,7 @@ Colour 0 stays dark. See `LESSONS.md § Colour`.
 ┌──────────────────────────────────────────────────┐
 │ header            auto height, min 60px          │
 ├──────────┬───────────────────────────────────────┤
-│ rail     │ screen        1fr                     │
+│ rail     │ screen        minmax(0, 1fr)          │
 │ 248px    │   player / brief / sheets             │
 │          ├───────────────────────────────────────┤
 │          │ foot          auto                    │
@@ -115,16 +137,20 @@ Colour 0 stays dark. See `LESSONS.md § Colour`.
 ```
 
 - `grid-template-rows: auto 1fr` — never a fixed header height
-- `grid-template-columns: 248px 1fr` — 150px below 760px wide
+- `grid-template-columns: minmax(0, 1fr)` for the page and
+  `248px minmax(0, 1fr)` for main — never a bare `1fr`, whose min-content
+  minimum lets one long unbreakable title widen the grid past the viewport and
+  clip the terminal's right edge
 - the player fills its cell with `position:absolute; inset:0`, never flex centring
 - overlays cover **the screen row only**, so the controls that dismiss them stay
   reachable
 - fullscreen changes the viewport and nothing else: same header, same rail
 
-Breakpoints: 1100px drops the header facts, 760px drops the one-line blurb and
-narrows the rail. Both exist to prevent the header wrapping, not to rearrange it.
-
----
+Breakpoints: 1100px drops the header facts. At 760px a side rail and a terminal
+no longer fit, so the rail stacks above the screen (`grid-template-rows: 160px
+minmax(0, 1fr)`), the title wraps, the blurb and key hints go, and the brief
+drops to 17px with 16px gutters. `tools/verify_site.py` checks there is no
+horizontal scroll at 1440, 1024 and 390px.
 
 ## Type
 
@@ -156,6 +182,26 @@ something to copy.
 Emphasis is applied **in the page, never in the file that was sent**. The prompts
 go to the agent verbatim; marking them up for display would change what the
 recording shows being asked.
+
+## The player
+
+Each chapter is its own cast (`casts/NNN.cast`), opening on the screen as it
+stood when the chapter began — a snapshot from a headless terminal emulator,
+not every earlier byte — so the last chapter of a four-hour run loads as fast as
+the first, and the next one is prefetched while this one plays.
+
+- **Playback stops on the chapter's last frame**, with "Chapter finished ·
+  Space → next". Untick "Pause at each chapter" to run straight through.
+- **Space is "next step"**, handled in the capture phase so the player's own
+  toggle never also fires: brief → play → pause ↔ resume → ended → next brief.
+  `[` `]` move between chapters, `m` opens the message, `Esc` closes.
+- **"Previous answer"** lifts the brief without playing: a chapter opens on the
+  previous chapter's final frame, so it can be read in full.
+- **Never `poster`.** With it, a seek followed by `play()` draws only the bytes
+  after the seek point: the header and statusline go missing, and only on the
+  chapters after the first.
+- An interjection (`stagecast say`) sits under its stage in the rail as
+  "↳ interjection", and its brief says it was not in the script.
 
 ---
 

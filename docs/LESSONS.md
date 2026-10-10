@@ -20,8 +20,8 @@ A driver that reads "is it busy?" from the pane therefore waits forever. One
 stage sat for 84 minutes with its figures already written.
 
 **Rule.** Never infer completion from the agent's appearance. A stage is finished
-when its `verify` command passes, and at no other time. `stagecast` polls the
-check; the agent's screen is not consulted.
+when the turn that received its prompt has ended *and* its `verify` command
+passes, and at no other time. The agent's screen is not consulted.
 
 ### Ask the agent's runtime when a turn ends — do not ask the screen
 
@@ -44,22 +44,60 @@ Use both signals, and keep them doing different jobs:
 The hook says when to look; the check says whether to advance. A turn that ends
 with a failing check is a stage that stopped short — or stopped to ask — and
 saying so immediately is better than spending the stall budget to find out.
-`hooks/turn-ended.sh` is the hook; registering it is three lines of settings.
+`hooks/turn_ended.py` is the hook; the claude-code preset registers it for you.
 
-### A passing check ends the wait immediately
+### The hook has to say which prompt the turn answered
 
-Waiting out a quiet period "to be safe" after the check already passes buys no
-information and costs the grace period on every stage — close to four hours
-across ten.
+A bare "a turn ended" timestamp is not enough once one session spans many
+stages. A driver that restarted, a stale turn that ended late, a human typing
+into the pane — each produces a turn end that is not the current stage's, and
+the driver cannot tell.
 
-**Rule.** Check passes → done, now. The quiet period applies only when the agent
-is silent *and* the check is failing, which is the one case where work may still
-be in flight in a background shell.
+**Rule.** The hook walks the transcript back to the most recent human message
+and matches it against the stage prompts and `say` texts: `turns.jsonl` records
+the id each ended turn answered (or `null`), and `answered/<id>` exists once the
+turn that received `<id>` has ended. The driver advances on `answered/<id>`,
+never on "some turn ended".
+
+### A passing check does not end the turn
+
+The first version polled `verify` and advanced the moment it passed — while the
+agent was still writing the file, or about to revise it. In a continuous session
+the next prompt was then pasted into a busy one.
+
+**Rule.** With a hook, completion is both signals: the turn ended, the pane
+settled, and the check passes. A check that passes mid-turn changes nothing;
+waiting costs only the rest of that turn. Without a hook (`turn_signal =
+"settle"`) a passing check plus a still pane is the best available.
 
 ### The check must be able to fail
 
 A verify that was already true before the stage ran will pass on a stage that did
 nothing. Write checks against a plausible half-finished attempt.
+
+In a repository with history this is harder than it sounds: `git tag | grep -q
+review` or `ls output/*.pdf` passes on artefacts from an earlier chapter or an
+earlier take. The old up-front "already satisfied → skip" shortcut made that
+worse — it skipped the stage before the agent saw it — and is now opt-in
+(`skip_if_satisfied`).
+
+**Rule.** A check must be scoped to after its chapter started.
+`stagecast-check saved 05 review` accepts only a tag or commit made after stage
+05's prompt was sent; `stagecast-check edited 06 05` only a repository that
+changed since 05's turn ended; `answered 05` only the turn that received 05.
+
+### A restart must not send anything twice
+
+Re-running after an interruption re-sent a prompt the agent had already
+received, which put the message in the recording twice; and re-verifying every
+earlier stage against a repository later stages had changed failed checks like
+"file X does not exist yet" that had been true at the time.
+
+**Rule.** Record what happened, and trust the record. `markers.jsonl` says what
+was sent, `answered/` what was answered, `verified/` what passed. `record` skips
+verified stages without re-running their checks, and never re-sends a prompt
+already sent in the live session — it waits on it, and presses Enter if the
+driver died between the paste and the Enter.
 
 ### The check must ask for what the prompt asked for
 
@@ -107,38 +145,115 @@ and the result read like a work order in every chapter. The turn-end signal
 belongs in a hook, the completion test belongs in `verify`, and the prompt should
 contain nothing a person would not have typed.
 
-### Record one segment per stage
+### Record one segment per stage — unless the target is an agent
 
-A repair costs one chapter instead of the whole take. Segments are joined at
-build time, so the result is still one continuous recording, and the joins
-double as chapter marks.
+`per-stage` opens a fresh session for every stage: a repair costs one chapter,
+and for a target that is not an agent (the demo's `worker.sh`) that is all
+upside.
 
-### A skipped stage will overwrite the segment it skipped
+For an agent it is N cold starts. Stage N has none of stages 1..N-1 in context,
+so every prompt restates everything and stops reading like what a person would
+type; every chapter opens on an empty screen and ends on a teardown — the
+alt-screen exit, a cleared terminal — instead of the answer. Half the lint rules
+exist because of that teardown.
 
-The recorder retires the previous take before each attempt. If the driver then
-finds the stage already complete and skips it, the session still opens and
-closes — leaving a one-second stub where the real recording was.
+**Rule.** `mode = "continuous"` for an agent: one session, each stage the next
+message, chapter boundaries kept as timestamps and written into the cast as
+asciinema markers. `stagecast finish` stops asciinema with SIGINT *before*
+killing tmux, so the last frame is the agent's final answer.
 
-**Rule.** Keep the longest cast per stage (`tools/restore_real.py`), and never
-assume a file in place is the good one.
+### A skipped stage used to overwrite the segment it skipped
+
+The recorder retired the previous take before each attempt; when the driver then
+found the stage already complete and skipped it, the session still opened and
+closed — leaving a one-second stub where the real recording was.
+
+**Rule.** Decide to skip *before* opening a session. Verified stages are skipped
+from `verified/`, and no session is opened for them.
 
 ### Dead air is not idle
 
 `asciinema --idle-time-limit` compresses silence, but a stalled stage is not
 silent: a spinner is an event. One segment ran 5,552 seconds of which 674 were
-work.
+work. And a long working stretch is not silent either: an agent working for
+twenty minutes emits output constantly, so it played back at 1x.
 
-**Rule.** Trim from the last substantial output, not from the last event
-(`tools/trim_casts.py`). "Substantial" means a few hundred bytes; a spinner frame
-is a handful.
+**Rule.** End each take at its last ended turn plus a few seconds (or where the
+driver began the teardown), and time-lapse the middle of every turn: the first
+20 s and the last 15 s at 1x, the rest at 8x.
+
+### Record raw time; compress afterwards
+
+Compressing at record time (`--idle-time-limit`, or the `idle_time_limit` in a
+user's `~/.config/asciinema/config`) breaks the mapping from cast time to wall
+clock. The hook's turn ends and the driver's send times then cannot be placed in
+the cast, and chapter markers computed from them land minutes off in a long run.
+
+**Rule.** `asciinema rec -i 86400`, and every change of time in one function in
+`tools/postprocess.py`, applied to events, markers and chapter ends alike. Take
+cast time zero from the recorded process itself (`lib/agent.sh`): the driver's
+clock starts before asciinema is up, and a cut computed from it lands that much
+late — which is how a quit once got into the published cast.
+
+### Never compress twice
+
+`idleTimeLimit: 2` in the player, on top of a post-processed cast, silently undid
+the eight-second answer hold and made player time drift from `chapters.json`: by
+chapter ten, a seek to a marker landed on the previous chapter.
+
+**Rule.** The published header has no `idle_time_limit`, and the player is never
+given `idleTimeLimit`.
+
+### A short answer flashes by
+
+A turn that ends on a brief answer is followed almost at once by the next
+prompt; on playback the answer was on screen for two seconds before the next
+brief covered it.
+
+**Rule.** The gap that contains a turn end plays as `hold` seconds (8), and the
+player pauses on each chapter's last frame.
 
 ### The agent will stop and ask
 
-It cannot be answered, so it waits until the stall timer fires — ninety-five
-minutes, in one case, because the prompt had not said which project to work in.
+Pre-empting every decision in the prompt is not enough, and over-specified
+prompts bring back the work-order look. An AskUserQuestion widget does not end
+the turn, so the Stop hook never fires and the run waits out the whole stall
+budget; a question asked in prose ends the turn with a failing check.
 
-**Rule.** Every prompt names its working directory. Every prompt states the
-decisions that would otherwise be questions.
+**Rule.** Opt in to `answer_questions = "recommended"`: the driver reads the
+options *from inside the widget only* — up from "Enter to select" to the nearest
+rule line, so a numbered list earlier in the conversation is never taken for
+one — waits a few seconds so the viewer can read the question, and picks the
+option marked Recommended, else the first. For prose questions, the run stops
+with exit 3; answer with `stagecast say "…"`, which is recorded, logged, and
+shown on the page as an interjection that was not in the script — the
+published page is honest about what was typed live. When a prompt is later
+revised to fold that answer in, `recorded = "…"` on the stage keeps what was
+actually sent.
+
+### The paste has to land in the input box
+
+In vim mode, the Escape sent to clear a TUI's pending state leaves the input in
+NORMAL, where a paste is a string of commands; and an Enter can be swallowed
+while the TUI re-renders.
+
+**Rule.** If the pane shows `-- NORMAL --`, send `i` first. After Enter, if the
+prompt's first characters are still in the *last* `❯` line, press Enter once
+more — and never on an empty box.
+
+### Keep the recorder out of the recording
+
+Claude Code reads `CLAUDE.md` from every ancestor directory and the user's own
+settings, hooks and MCP servers; a recording started from inside another Claude
+Code session also inherits its `CLAUDE*` variables. All of it shaped what the
+viewer saw — and an `@import` outside the project opened the session on a dialog
+the readiness loop did not know, so the first stage sat until the wait expired.
+
+**Rule.** `preset = "claude-code"`: `--setting-sources project,local`, a
+generated `--settings` (light theme, the Stop hook), an env scrub, the trust,
+bypass and import dialogs answered and folded into t = 0, and a refusal to
+record in a workdir with an ancestor `CLAUDE.md` — anything under `$HOME`
+included.
 
 ---
 
@@ -151,10 +266,23 @@ the terminal is watching. An agent calling an API with `?api_key=…` puts the k
 on screen, and the cast keeps it. A real key was found in two casts minutes
 before they would have been pushed to a public repository.
 
-**Rule.** Scan before every publish, never as a one-off (`tools/redact.py`).
+**Rule.** Scan before every publish, never as a one-off (`tools/redact.py`), in
+the one post-processing pass every export goes through — stills included.
 Replace with a marker **padded to the original length**: a cast is a stream of
 terminal output, and a replacement of a different length shifts every column
 after it on that line.
+
+### Read the secrets from the project being recorded
+
+The redactor read `.env` from beside its own source — the stagecast checkout —
+so for every real project it printed "no .env" and let the project's secrets
+through, unless one happened to match a token shape. And the shapes missed
+Anthropic keys (`sk-ant-…`: the `-` after `ant` broke the character class),
+fine-grained GitHub tokens and Slack tokens.
+
+**Rule.** `.env` comes from the directory of `stagecast.toml`, plus
+`[redact] env_files`, `[redact] literals` and `$REDACT`; and `tests/` holds a
+recording with one secret of every shape, asserted gone after `build`.
 
 ---
 
@@ -235,7 +363,28 @@ invisible.
 
 **Rule.** Drive the published page in a real browser and look at the pixels
 (`tools/verify_site.py`). Click every control. A button you can see is not a
-button you can press.
+button you can press. Wait for the terminal to be drawn rather than for a fixed
+number of seconds — a fixed wait is a race against the download — and read the
+expected chapter count from the page, never from a constant.
+
+### A template the ignore file swallowed
+
+A bare `site/` rule, meant for build output, also matched the framework's own
+template directory, so the template was never committed and `build` failed on
+every fresh clone — while every check on the author's machine passed.
+
+**Rule.** Anchor ignore rules to what they mean (`/demo/site/`), keep the
+template where no output rule can reach it (`templates/`), and let CI build the
+demo from a committed recording.
+
+### `poster` breaks seeking
+
+With `poster` set, `seek({marker: i})` then `play()` drew only the bytes after
+the marker: no header, no statusline. The first chapter looked fine, which is
+why it took a while.
+
+**Rule.** Never pass `poster`. Each chapter cast opens on a full screen
+snapshot, and `verify_site.py` asserts the first row is not blank after a jump.
 
 ### Assert on content, not only on structure
 

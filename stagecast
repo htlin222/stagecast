@@ -1,65 +1,70 @@
 #!/usr/bin/env bash
 # stagecast — record an agent working, publish it as a chaptered site.
 #
-#   stagecast init [DIR]           scaffold stagecast.toml from a prompt directory
-#   stagecast record [--only ID]   record the stages that are not done
-#   stagecast build                assemble, trim, redact, lint, render the site
-#   stagecast lint [DIR]           check the recordings for harness leaks
-#   stagecast test                 run the framework's own checks
-#   stagecast verify [URL]         drive the published page in a real browser
-#   stagecast all                  record, build
+#   stagecast init [DIR]              scaffold stagecast.toml from a prompt directory
+#   stagecast record [--only ID] [--from ID] [--until ID]
+#                                     record the stages that are not verified yet
+#   stagecast say "TEXT" [--after ID] an unscripted message into the live session
+#   stagecast finish                  stop a continuous recording, agent still on screen
+#   stagecast status                  what is verified, sent, and next
+#   stagecast build [--prompts-md F]  post-process, redact, lint, render the site
+#   stagecast lint [DIR]              check the recordings for harness leaks
+#   stagecast test                    run the framework's own checks
+#   stagecast verify [URL]            drive the published page in a real browser
+#   stagecast all                     record, finish, build
 #
 # Reads ./stagecast.toml. See docs/DESIGN.md for the layout and type, and
 # docs/LESSONS.md for why each rule is there.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")" && pwd)"
 CFG="${STAGECAST_CONFIG:-stagecast.toml}"
+PY=(uv run --quiet --no-project)
 # init is what you run when there is no config yet, so it comes before the check.
 if [ "${1:-}" = "init" ]; then
   shift
-  exec uv run --no-project "$ROOT/tools/init_project.py" "${1:-prompts}" "$CFG"
+  exec "${PY[@]}" "$ROOT/tools/init_project.py" "${1:-prompts}" "$CFG"
+fi
+if [ "${1:-}" = "test" ]; then
+  bash "$ROOT/tests/test_lint.sh" || exit 1
+  exec "${PY[@]}" --with pytest --with pyte python -m pytest -q "$ROOT/tests"
 fi
 [ -f "$CFG" ] || { printf 'no %s here\n' "$CFG" >&2; exit 2; }
 
 SC_BASE="$(cd "$(dirname "$CFG")" && pwd)"; export SC_BASE
-STATE="$SC_BASE/.stagecast"; mkdir -p "$STATE"
-export SC_PLAN="$STATE/plan.tsv"
-eval "$(uv run --no-project "$ROOT/tools/plan.py" "$CFG" "$SC_PLAN")"
-export SC_COLS SC_ROWS SC_AGENT SC_IDLE SC_SOCKET SC_NAME SC_PASTE SC_CLEAR SC_QUIT
-export SC_WORKDIR="$SC_BASE/$SC_WORKDIR"
-export SC_OUT="$STATE/recording"
+CFG="$SC_BASE/$(basename "$CFG")"
+STATE="${STAGECAST_STATE:-$SC_BASE/.stagecast}"; mkdir -p "$STATE"
 OUTDIR="${STAGECAST_OUT:-$SC_BASE/site}"
+drive() { "${PY[@]}" "$ROOT/tools/drive.py" "$CFG" "$@"; }
+mode() { "${PY[@]}" python -c 'import sys,tomllib; print(tomllib.load(open(sys.argv[1],"rb")).get("recording",{}).get("mode","per-stage"))' "$CFG"; }
 
 cmd="${1:-all}"; shift || true
-[ "${1:-}" = "--only" ] && { export SC_ONLY="${2:?}"; shift 2; }
-
 case "$cmd" in
-  record) bash "$ROOT/lib/record.sh" ;;
+  record|start|say|finish|status) drive "$cmd" "$@" ;;
   build)
     # Clearing first is not tidiness: a stale page is indistinguishable from a
     # fresh one. See docs/LESSONS.md § Process.
-    rm -rf "$OUTDIR/casts"; mkdir -p "$OUTDIR/casts"
-    uv run --no-project "$ROOT/tools/restore_real.py" "$SC_OUT"
-    for f in "$SC_OUT"/seg-*.cast; do
-      [ -e "$f" ] || continue
-      id="$(basename "$f" .cast | sed -E 's/^seg-[0-9]+-step//')"
-      cp "$f" "$OUTDIR/casts/stage-$id.cast"
-    done
-    uv run --no-project "$ROOT/tools/trim_casts.py" "$OUTDIR/casts"
-    # Never publish a recording unscanned: a terminal keeps whatever was on it.
-    uv run --no-project "$ROOT/tools/redact.py" "$OUTDIR/casts"
+    rm -rf "$OUTDIR/casts" "$OUTDIR/milestones" "$OUTDIR"/demo.cast "$OUTDIR"/chapters.json \
+      "$OUTDIR"/meta.json "$OUTDIR"/milestones.json "$OUTDIR"/index.html "$OUTDIR"/prompts.json
+    mkdir -p "$OUTDIR"
+    # Timing, chapters, and redaction in one pass: never publish a recording
+    # unscanned, because a terminal keeps whatever was on it.
+    "${PY[@]}" --with pyte "$ROOT/tools/postprocess.py" "$CFG" "$OUTDIR" || exit 1
     # Lint the recording, not just the page. Every defect in docs/LESSONS.md
     # § Driving a target that is not Claude Code passed its stage check and was
     # caught by a person watching the playback; this is that, deterministically.
-    uv run --no-project "$ROOT/tools/lint_casts.py" "$CFG" "$OUTDIR/casts" || exit 1
-    uv run --no-project "$ROOT/tools/build_site.py" "$CFG" "$OUTDIR" ;;
+    "${PY[@]}" "$ROOT/tools/lint_casts.py" "$CFG" "$OUTDIR" || exit 1
+    "${PY[@]}" "$ROOT/tools/build_site.py" "$CFG" "$OUTDIR" "$@" || exit 1
+    if "${PY[@]}" python -c 'import sys; sys.path.insert(0, sys.argv[2]); import sc_config as C; sys.exit(0 if C.load(sys.argv[1])["milestones"] else 1)' "$CFG" "$ROOT/tools"; then
+      "${PY[@]}" "$ROOT/tools/build_milestones.py" "$CFG" "$OUTDIR" || exit 1
+    fi ;;
   lint)
-    uv run --no-project "$ROOT/tools/lint_casts.py" "$CFG" "${1:-$SC_OUT}" ;;
-  test)
-    bash "$ROOT/tests/test_lint.sh" ;;
+    "${PY[@]}" "$ROOT/tools/lint_casts.py" "$CFG" "${1:-$OUTDIR}" ;;
   verify)
-    uv run --with playwright --no-project "$ROOT/tools/verify_site.py" \
+    "${PY[@]}" --with playwright "$ROOT/tools/verify_site.py" \
       "${1:-http://localhost:8000/}" "$STATE/site-check" ;;
-  all) "$0" record && "$0" build ;;
-  *) sed -n '2,12p' "$ROOT/stagecast" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  all)
+    "$0" record || exit $?
+    [ "$(mode)" = continuous ] && { "$0" finish || exit $?; }
+    "$0" build ;;
+  *) sed -n '2,16p' "$ROOT/stagecast" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

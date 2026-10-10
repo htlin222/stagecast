@@ -1,0 +1,8 @@
+{"version": 2, "width": 118, "height": 28, "timestamp": 1791596558, "idle_time_limit": 86400.0, "env": {"SHELL": "/bin/bash", "TERM": "tmux-256color"}}
+[0.010542, "o", "worker — reads an instruction, does one thing, says what it did\r\n\r\n› "]
+[4.928387, "o", "Write a notes file saying the check reads it back, and that nothing advances on a claim. Then tell me how many lines it has."]
+[6.932228, "o", "\r\n"]
+[6.932458, "o", "  writing notes.md\r\n"]
+[7.938204, "o", "  notes.md · 4 lines\r\n\r\n› "]
+[16.979773, "o", "exit"]
+[17.983971, "o", "\r\n\r\n"]

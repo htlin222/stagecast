@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{TITLE}}</title>
+    <meta name="description" content="{{BLURB}}" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/asciinema-player@3.10.0/dist/bundle/asciinema-player.css" />
+    <style>
+      /* docs/DESIGN.md: six colours, one white ground, no dark version. */
+      :root {
+        --ink: #1c1917; --muted: #57534e; --faint: #8c8681; --line: #e7e5e4;
+        --bg: #ffffff; --card: #ffffff; --soft: #fafaf9;
+        --sans: ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+        --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 15px/1.6 var(--sans); }
+      ::backdrop { background: #fff; }
+      /* minmax(0, 1fr), never 1fr: a 1fr track has a min-content minimum, so one
+         long unbreakable title would widen the grid past the viewport and clip
+         the terminal's right edge. */
+      #app { display: grid; grid-template-rows: auto 1fr; grid-template-columns: minmax(0, 1fr); height: 100vh; height: 100dvh; }
+      header { display: flex; align-items: center; gap: 24px; min-height: 60px; min-width: 0; overflow: hidden;
+        padding: 10px 20px; border-bottom: 1px solid var(--line); }
+      header h1 { font-size: 16px; font-weight: 600; margin: 0; white-space: nowrap; }
+      header .blurb { color: var(--muted); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      header .facts { display: flex; gap: 18px; margin-left: auto; }
+      header .facts div { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
+      header .facts b { font-size: 15px; white-space: nowrap; }
+      header .facts span { font-size: 12px; color: var(--faint); white-space: nowrap; }
+      header nav { display: flex; gap: 14px; font-size: 13px; white-space: nowrap; }
+      header nav a { color: var(--muted); text-decoration: none; cursor: pointer; }
+      header nav a:hover { color: var(--ink); }
+      main { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 0; min-width: 0; }
+      #rail { border-right: 1px solid var(--line); overflow-y: auto; padding: 6px 0 24px; min-height: 0; }
+      #rail .part { font-size: 11px; letter-spacing: .1em; color: var(--faint); padding: 14px 14px 4px; text-transform: uppercase; }
+      #rail button { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 4px; width: 100%; text-align: left;
+        background: none; border: 0; padding: 6px 14px; font: 13px/1.45 var(--sans); color: var(--muted); cursor: pointer; }
+      #rail button.say { padding-left: 44px; font-size: 12px; }
+      #rail button .n, #rail button .t { color: var(--faint); font-variant-numeric: tabular-nums; }
+      #rail button:hover { color: var(--ink); }
+      #rail button[aria-current="true"] { color: var(--ink); font-weight: 600; background: var(--soft); }
+      #stage { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; min-width: 0; }
+      #screen { position: relative; min-height: 0; min-width: 0; background: var(--bg); overflow: hidden; }
+      /* Fill the cell with absolute positioning, never flex centring: a centred
+         flex child resolves to zero height and the player draws nothing. */
+      #player { position: absolute; inset: 0; }
+      #player .ap-wrapper, #player .ap-player { background: #fff; }
+      .asciinema-player-theme-stagecast {
+        --term-color-foreground: #1c1917; --term-color-background: #ffffff;
+        --term-color-0: #1c1917; --term-color-1: #cf222e; --term-color-2: #1a7f37; --term-color-3: #9a6700;
+        --term-color-4: #0969da; --term-color-5: #8250df; --term-color-6: #1b7c83; --term-color-7: #57534e;
+        --term-color-8: #57534e; --term-color-9: #cf222e; --term-color-10: #1a7f37; --term-color-11: #9a6700;
+        --term-color-12: #0969da; --term-color-13: #8250df; --term-color-14: #1b7c83; --term-color-15: #8c8681;
+      }
+      .hidden { display: none !important; }
+      /* Overlays cover the screen row only, so the controls that dismiss them stay reachable. */
+      .overlay { position: absolute; inset: 0; z-index: 20; background: var(--card); overflow-y: auto; }
+      #brief { display: flex; flex-direction: column; padding: 40px 56px; }
+      #brief > .inner { margin: auto 0; }
+      #brief .label, .sheet .label { font-size: 12px; color: var(--faint); letter-spacing: .08em; margin-bottom: 14px; }
+      #brieftext { font-size: 21px; line-height: 1.95; max-width: 62ch; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 12px; }
+      #brieftext b { font-weight: 700; }
+      #briefnote { color: var(--muted); font-size: 14px; max-width: 62ch; margin: 0 0 28px; }
+      #briefnote:empty { display: none; }
+      #briefdrop { color: var(--muted); font: 13px var(--mono); margin: -4px 0 22px; }
+      #briefdrop:empty { display: none; }
+      .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+      .btn { font: 600 13px var(--sans); letter-spacing: .14em; color: #fff; background: var(--ink); border: 0;
+        padding: 11px 22px; border-radius: 4px; cursor: pointer; }
+      .btn.ghost { color: var(--ink); background: none; border: 1px solid var(--line); letter-spacing: .04em; font-weight: 500; }
+      #endbar { position: absolute; right: 14px; bottom: 54px; z-index: 15; display: flex; gap: 10px; align-items: center;
+        max-width: calc(100% - 28px); padding: 8px 8px 8px 14px; background: var(--card); border: 1px solid var(--line);
+        border-radius: 999px; box-shadow: 0 4px 16px rgba(0, 0, 0, .12); font-size: 13px; color: var(--muted); }
+      #endbar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #endbar .btn { padding: 6px 14px; flex: none; letter-spacing: .04em; }
+      .sheet { position: absolute; inset: 0; z-index: 30; background: var(--card); padding: 40px 56px; overflow-y: auto; display: none; }
+      .sheet.open { display: block; }
+      .sheet .close { position: absolute; top: 14px; right: 18px; background: none; border: 1px solid var(--line); border-radius: 4px;
+        font: 13px var(--sans); color: var(--muted); padding: 4px 10px; cursor: pointer; }
+      #prompttext { font: 14px/1.7 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--soft);
+        border: 1px solid var(--line); border-radius: 4px; padding: 16px 18px; max-width: 90ch; margin: 0 0 14px; }
+      #sheet-about .body { max-width: 66ch; }
+      #sheet-about a { color: var(--ink); }
+      #sheet-about code, .sheet code { font: 13px var(--mono); background: var(--soft); padding: 1px 4px; border-radius: 3px; }
+      /* Milestones: what each stage produced, taken from that stage's git version. */
+      #sheet-ms .intro { color: var(--muted); max-width: 70ch; margin: 0 0 22px; }
+      .ms { border-top: 1px solid var(--line); padding: 18px 0 20px; }
+      .ms h2 { font-size: 17px; margin: 0 0 4px; display: flex; gap: 10px; align-items: baseline; }
+      .ms h2 .k { color: var(--faint); font: 13px var(--mono); }
+      .ms .sum { color: var(--muted); margin: 0 0 10px; max-width: 70ch; }
+      .ms .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px; }
+      .chip { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; background: none; font: 13px var(--sans);
+        color: var(--ink); cursor: pointer; text-decoration: none; }
+      .chip:hover { background: var(--soft); }
+      .files { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+      .file { display: flex; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
+        background: none; text-align: left; font: 13px/1.4 var(--sans); color: var(--ink); cursor: pointer; min-width: 0; }
+      .file:hover { background: var(--soft); }
+      .file .ic { font: 600 10px var(--mono); color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 1px 4px;
+        min-width: 38px; text-align: center; }
+      #viewer { position: absolute; inset: 0; z-index: 40; background: #fff; display: none; grid-template-rows: auto minmax(0, 1fr); }
+      #viewer.open { display: grid; }
+      #viewer .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+      #viewer .bar b { font-size: 14px; }
+      #viewer .bar .src { color: var(--faint); font: 12px var(--mono); flex: 1; min-width: 0; overflow-wrap: anywhere; }
+      #v-body { min-height: 0; }
+      #v-body iframe, #v-body .imgwrap { width: 100%; height: 100%; border: 0; display: block; }
+      #v-body .imgwrap { overflow: auto; text-align: center; background: var(--soft); }
+      #v-body .imgwrap img { max-width: 100%; height: auto; margin: 16px auto; box-shadow: 0 0 0 1px var(--line); }
+      footer { display: flex; align-items: center; gap: 16px; padding: 8px 20px; border-top: 1px solid var(--line);
+        font-size: 13px; color: var(--muted); min-width: 0; }
+      footer .note { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      footer .hint { font-size: 12px; color: var(--faint); white-space: nowrap; }
+      footer label { display: flex; gap: 6px; align-items: center; white-space: nowrap; cursor: pointer; }
+      footer .chip { white-space: nowrap; }
+      kbd { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
+      @media (max-width: 1100px) { header .facts { display: none; } }
+      @media (max-width: 760px) {
+        /* A side rail plus a terminal does not fit on a phone: stack them. */
+        header { flex-wrap: wrap; gap: 6px 14px; padding: 8px 16px; }
+        header h1 { white-space: normal; font-size: 15px; flex: 1 1 100%; }
+        header .blurb, footer .hint, footer .note { display: none; }
+        main { grid-template-columns: minmax(0, 1fr); grid-template-rows: 160px minmax(0, 1fr); }
+        #rail { border-right: 0; border-bottom: 1px solid var(--line); }
+        footer { padding: 8px 16px; justify-content: space-between; }
+        #brief, .sheet { padding: 24px 16px; }
+        #brieftext { font-size: 17px; line-height: 1.8; }
+        #endbar { bottom: 12px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>{{NAME}}</h1>
+        <div class="blurb">{{BLURB}}</div>
+        <div class="facts">{{FACTS}}</div>
+        <nav>
+          <a id="ms-link" class="hidden">Milestones</a>
+          <a id="about-link">About</a>
+          <a href="{{REPO}}">Source</a>
+        </nav>
+      </header>
+      <main>
+        <div id="rail" role="list"></div>
+        <div id="stage">
+          <div id="screen">
+            <div id="player"></div>
+            <div id="brief" class="overlay">
+              <div class="inner">
+                <div class="label" id="brieflabel"></div>
+                <div id="brieftext"></div>
+                <div id="briefdrop"></div>
+                <div id="briefnote"></div>
+                <div class="row">
+                  <button class="btn" id="btn-start">START</button>
+                  <button class="btn ghost" id="btn-peek">Previous answer</button>
+                  <button class="btn ghost hidden" id="btn-ms">What this produced</button>
+                </div>
+              </div>
+            </div>
+            <div id="endbar" class="hidden">
+              <span id="endtext"></span>
+              <button class="btn" id="btn-next">Next ▶</button>
+            </div>
+            <div id="sheet-prompt" class="sheet">
+              <button class="close" id="close-prompt">Close</button>
+              <div class="label" id="promptlabel">The message</div>
+              <div id="prompttext"></div>
+              <div class="row"><button class="chip" id="btn-copy">Copy</button></div>
+            </div>
+            <div id="sheet-ms" class="sheet">
+              <button class="close" id="close-ms">Close</button>
+              <div class="label">Milestones</div>
+              <p class="intro">What each stage produced, taken from <b>the git version it was saved as</b> — not from
+                today's working tree. Open a file to preview it; a chapter chip jumps to the part of the recording
+                that made it.</p>
+              <div id="ms-list"></div>
+            </div>
+            <div id="viewer">
+              <div class="bar">
+                <b id="v-title"></b><span class="src" id="v-src"></span>
+                <a class="chip" id="v-open" target="_blank" rel="noopener">Open in a tab</a>
+                <a class="chip hidden" id="v-pdf" target="_blank" rel="noopener">PDF</a>
+                <a class="chip hidden" id="v-dl" download>Download original</a>
+                <button class="chip" id="v-close">Close</button>
+              </div>
+              <div id="v-body"></div>
+            </div>
+            <div id="sheet-about" class="sheet">
+              <button class="close" id="close-about">Close</button>
+              <div class="body">{{ABOUT}}</div>
+            </div>
+          </div>
+          <footer>
+            <span class="note" id="note"></span>
+            <button class="chip" id="btn-prompt">Message</button>
+            <label><input type="checkbox" id="pausemode" checked /> Pause at each chapter</label>
+            <span class="hint"><kbd>space</kbd> next step · <kbd>[</kbd> <kbd>]</kbd> chapters · <kbd>m</kbd> message · <kbd>Esc</kbd> close</span>
+          </footer>
+        </div>
+      </main>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/asciinema-player@3.10.0/dist/bundle/asciinema-player.min.js"></script>
+    <script>
+      var CHAPTERS = {{CHAPTERS}};
+      var STAGES = CHAPTERS; // the name tools/verify_site.py and older pages use
+      var KEYS = {{KEYS}};
+      var MIN_CHAPTER = {{MIN_CHAPTER}};
+      var $ = function (id) { return document.getElementById(id); };
+
+      // One cast per chapter (casts/NNN.cast), each opening on the screen as it
+      // stood when the chapter began. The page never downloads a chapter it is
+      // not showing, so the last chapter of a four-hour run starts as fast as
+      // the first. The next chapter is prefetched while this one plays.
+      //
+      // What Space does next is `state`: "brief" → play this chapter;
+      // "playing" → pause; "paused" → resume; "ended" → the next chapter's brief.
+      var cur = -1, player = null, loaded = -1, ready = false, wantPlay = false;
+      var state = "brief", pauseMode = true;
+
+      function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+      // Emphasis is applied here, never in the file that was sent, and ignores case.
+      function emphasise(s) {
+        var h = esc(s);
+        KEYS.forEach(function (k) {
+          if (!k) return;
+          var rx = new RegExp(esc(k).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+          h = h.replace(rx, function (m) { return "<b>" + m + "</b>"; });
+        });
+        return h;
+      }
+      function clock(t) {
+        t = Math.floor(t); var h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60;
+        return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0");
+      }
+      function label(c) { return c.kind === "say" ? "↳ interjection" : c.name; }
+
+      function rail() {
+        var lastPart = null;
+        CHAPTERS.forEach(function (c, i) {
+          if (c.kind === "stage" && c.part && c.part !== lastPart) {
+            var p = document.createElement("div"); p.className = "part"; p.textContent = c.part;
+            $("rail").appendChild(p); lastPart = c.part;
+          }
+          var b = document.createElement("button");
+          b.setAttribute("role", "listitem");
+          if (c.kind === "say") b.className = "say";
+          b.innerHTML = '<span class="n">' + (c.kind === "say" ? "" : esc(c.id)) + "</span><span>" + esc(label(c)) +
+            '</span><span class="t">' + clock(c.t) + "</span>";
+          b.title = c.kind === "say" ? "Typed live, not in the script" : c.id + " · " + c.name;
+          b.onclick = function () { go(i); };
+          $("rail").appendChild(b);
+        });
+      }
+
+      function highlight(i) {
+        cur = i;
+        document.querySelectorAll("#rail button").forEach(function (b, j) {
+          b.setAttribute("aria-current", j === i ? "true" : "false");
+          if (j === i && b.scrollIntoView) b.scrollIntoView({ block: "nearest" });
+        });
+        var c = CHAPTERS[i];
+        $("note").textContent = c.kind === "say" ? "Interjection: " + c.prompt : c.id + " · " + c.name + (c.note ? " — " + c.note : "");
+        try { history.replaceState(null, "", "#" + c.id); } catch (e) {}
+      }
+
+      function brief(i) {
+        var c = CHAPTERS[i];
+        $("brieflabel").textContent = c.kind === "say" ? "Interjection · not in the script"
+          : (c.part ? c.part + " · " : "") + c.id + " · " + c.name;
+        $("brieftext").innerHTML = emphasise(c.prompt);
+        $("briefdrop").textContent = c.drop && c.drop.length ? "inbox ← " + c.drop.join(", ") : "";
+        $("briefnote").textContent = c.note || "";
+        $("btn-peek").classList.toggle("hidden", i === 0);
+        msButton(c);
+        state = "brief";
+        $("endbar").classList.add("hidden");
+        $("brief").classList.remove("hidden");
+        startLabel();
+      }
+      function startLabel() { $("btn-start").textContent = ready || loaded !== cur ? "START" : "LOADING…"; }
+
+      // Never pass `poster`: with it, a seek followed by play() draws only the
+      // bytes after the seek point, so the header and statusline go missing.
+      // Never pass `idleTimeLimit`: postprocess.py already capped idle time, and
+      // a second cap would undo each answer's hold and drift from chapters.json.
+      function load(i) {
+        if (player) { try { player.dispose(); } catch (e) {} }
+        $("player").innerHTML = "";
+        loaded = i; ready = false;
+        var p = player = AsciinemaPlayer.create(CHAPTERS[i].cast, $("player"), {
+          fit: "both", theme: "stagecast", terminalFontFamily: "var(--mono)", preload: true
+        });
+        p.addEventListener("play", function () {
+          if (p !== player) return;
+          if (state === "brief") { $("brief").classList.add("hidden"); }
+          state = "playing"; $("endbar").classList.add("hidden");
+        });
+        p.addEventListener("pause", function () { if (p === player && state === "playing") state = "paused"; });
+        p.addEventListener("ended", function () { if (p === player) chapterEnded(); });
+        // A seek on a freshly created player is dropped until it has parsed the
+        // cast: wait for a duration, then draw the chapter's opening frame.
+        whenReady(p, function () {
+          Promise.resolve(p.seek(0.05)).then(function () {
+            if (p !== player) return;
+            ready = true; startLabel();
+            if (wantPlay) { wantPlay = false; start(); }
+          });
+        });
+        prefetch(i + 1);
+      }
+      function whenReady(p, fn, n) {
+        n = n || 0;
+        Promise.resolve(p.getDuration()).then(function (d) {
+          if (p !== player) return;
+          if (d) fn(); else if (n < 300) setTimeout(function () { whenReady(p, fn, n + 1); }, 50);
+        });
+      }
+      var fetched = {};
+      function prefetch(i) {
+        var c = CHAPTERS[i];
+        if (!c || fetched[c.cast]) return;
+        fetched[c.cast] = true;
+        try { fetch(c.cast, { cache: "force-cache" }).catch(function () {}); } catch (e) {}
+      }
+
+      function go(i, autoplay) {
+        if (i < 0 || i >= CHAPTERS.length) return;
+        closeSheets();
+        highlight(i);
+        brief(i);
+        load(i);
+        if (autoplay) start();
+      }
+      function start() {
+        if (loaded !== cur) load(cur);
+        if (!ready) { wantPlay = true; startLabel(); return; }
+        $("brief").classList.add("hidden");
+        $("endbar").classList.add("hidden");
+        state = "playing";
+        var p = player;
+        Promise.resolve(p.getCurrentTime()).then(function (t) {
+          return Promise.resolve(p.getDuration()).then(function (d) {
+            return d && t >= d - 0.05 ? p.seek(0) : null;
+          });
+        }).then(function () { if (p === player) p.play(); });
+      }
+      // The chapter cast ends on the chapter's final frame, so ending is where
+      // to stop: never run on into the next chapter's prompt.
+      function chapterEnded() {
+        var n = CHAPTERS[cur + 1];
+        state = "ended";
+        if (n && !pauseMode) { go(cur + 1, true); return; }
+        $("endtext").textContent = n ? "Chapter finished · Space → next: " + label(n) : "The end";
+        $("btn-next").classList.toggle("hidden", !n);
+        $("endbar").classList.remove("hidden");
+      }
+      function next() { go(cur + 1); }
+      function step() {
+        if (state === "brief") start();
+        else if (state === "ended") { if (CHAPTERS[cur + 1]) next(); }
+        else if (state === "playing") { player.pause(); state = "paused"; }
+        else { $("endbar").classList.add("hidden"); player.play(); state = "playing"; }
+      }
+
+      // ── sheets ──────────────────────────────────────────────────────────────
+      function closeSheets() {
+        ["sheet-about", "sheet-ms", "sheet-prompt"].forEach(function (id) { $(id).classList.remove("open"); });
+        closeViewer();
+      }
+      function pauseIfPlaying() { if (player && state === "playing") { player.pause(); state = "paused"; } }
+      function openPrompt() {
+        var c = CHAPTERS[cur]; closeSheets(); pauseIfPlaying();
+        $("promptlabel").textContent = c.kind === "say" ? "Interjection · typed live" : "The message · " + c.id + " · " + c.name;
+        $("prompttext").textContent = c.prompt;
+        $("sheet-prompt").classList.add("open");
+      }
+      function openAbout() { closeSheets(); pauseIfPlaying(); $("sheet-about").classList.add("open"); }
+
+      // ── milestones ──────────────────────────────────────────────────────────
+      var MS = [];
+      var KIND = { pdf: "PDF", file: "FILE", image: "IMG", md: "MD", csv: "CSV", docx: "DOCX", text: "TXT" };
+      function msFor(id) { return MS.find(function (m) { return m.chapters.indexOf(id) >= 0; }); }
+      function chapterIndex(id) { return CHAPTERS.findIndex(function (c) { return c.id === id; }); }
+      function renderMilestones() {
+        var box = $("ms-list"); box.innerHTML = "";
+        MS.forEach(function (m, k) {
+          var sec = document.createElement("section"); sec.className = "ms"; sec.id = "ms-" + m.id;
+          var chips = m.chapters.map(function (id) {
+            var c = CHAPTERS[chapterIndex(id)];
+            return c ? '<button class="chip" data-ch="' + esc(id) + '">▶ ' + esc(id) + " " + esc(c.name) + "</button>" : "";
+          }).join("");
+          var tree = m.tree ? '<a class="chip" target="_blank" rel="noopener" href="' + esc(m.tree) + '">git: ' + esc(m.ref) + " ↗</a>"
+            : '<span class="chip">git: ' + esc(m.ref) + "</span>";
+          sec.innerHTML = '<h2><span class="k">' + String(k + 1).padStart(2, "0") + "</span>" + esc(m.title) + "</h2>" +
+            (m.summary ? '<p class="sum">' + esc(m.summary) + "</p>" : "") + '<div class="meta">' + chips + tree + "</div>";
+          var grid = document.createElement("div"); grid.className = "files";
+          m.items.forEach(function (it) {
+            var b = document.createElement("button"); b.className = "file";
+            b.innerHTML = '<span class="ic">' + (KIND[it.kind] || "FILE") + "</span><span>" + esc(it.label) + "</span>";
+            b.onclick = function () { openViewer(m, it); };
+            grid.appendChild(b);
+          });
+          sec.appendChild(grid);
+          box.appendChild(sec);
+        });
+        box.querySelectorAll("[data-ch]").forEach(function (b) {
+          b.onclick = function () { go(chapterIndex(b.getAttribute("data-ch"))); };
+        });
+      }
+      function openMilestones(id) {
+        closeSheets(); pauseIfPlaying();
+        $("sheet-ms").classList.add("open");
+        var el = id && document.getElementById("ms-" + id);
+        $("sheet-ms").scrollTop = el ? el.offsetTop - 8 : 0;
+      }
+      function asset(m, f) { return "milestones/" + encodeURIComponent(m.id) + "/" + encodeURIComponent(f); }
+      function openViewer(m, it) {
+        var url = asset(m, it.view);
+        $("v-title").textContent = it.label;
+        $("v-src").textContent = it.src + " @ " + it.ref;
+        $("v-open").href = url;
+        $("v-dl").classList.toggle("hidden", !it.download); if (it.download) $("v-dl").href = asset(m, it.download);
+        $("v-pdf").classList.toggle("hidden", !it.pdf); if (it.pdf) $("v-pdf").href = asset(m, it.pdf);
+        // PDFs are shown as page images: mobile Safari and headless Chromium draw an embedded PDF blank.
+        $("v-body").innerHTML = it.kind === "image" ? '<div class="imgwrap"><img alt="" src="' + url + '"></div>'
+          : '<iframe title="' + esc(it.label) + '" src="' + url + '"></iframe>';
+        $("viewer").classList.add("open");
+      }
+      function closeViewer() { $("viewer").classList.remove("open"); $("v-body").innerHTML = ""; }
+      function msButton(c) {
+        var m = c && c.kind === "stage" ? msFor(c.id) : null;
+        $("btn-ms").classList.toggle("hidden", !m);
+        $("btn-ms").onclick = function () { if (m) openMilestones(m.id); };
+      }
+
+      // ── wiring ──────────────────────────────────────────────────────────────
+      $("btn-start").onclick = start;
+      $("btn-next").onclick = next;
+      // Hide the brief without playing: the chapter's opening frame is the
+      // previous chapter's final answer, readable in full.
+      $("btn-peek").onclick = function () {
+        $("brief").classList.add("hidden");
+        $("endtext").textContent = "Previous chapter's answer · Space → play " + label(CHAPTERS[cur]);
+        $("btn-next").classList.add("hidden");
+        $("endbar").classList.remove("hidden");
+      };
+      $("btn-prompt").onclick = openPrompt;
+      $("close-prompt").onclick = closeSheets;
+      $("btn-copy").onclick = function () {
+        try { navigator.clipboard.writeText(CHAPTERS[cur].prompt); $("btn-copy").textContent = "Copied"; } catch (e) {}
+        setTimeout(function () { $("btn-copy").textContent = "Copy"; }, 1500);
+      };
+      $("about-link").onclick = openAbout;
+      $("close-about").onclick = closeSheets;
+      $("ms-link").onclick = function () { openMilestones(); };
+      $("close-ms").onclick = closeSheets;
+      $("v-close").onclick = closeViewer;
+      $("pausemode").onchange = function (e) { pauseMode = e.target.checked; };
+
+      function typing(e) { var t = e.target.tagName; return t === "INPUT" || t === "TEXTAREA" || t === "SELECT"; }
+      // Capture phase, so the player never also toggles play/pause on Space.
+      document.addEventListener("keydown", function (e) {
+        if (typing(e) || e.metaKey || e.ctrlKey || e.altKey) return;
+        var open = document.querySelector(".sheet.open, #viewer.open");
+        if (e.key === " ") {
+          e.preventDefault(); e.stopPropagation();
+          if (!open && !e.repeat) step();
+          return;
+        }
+        if (e.key === "Escape") { if ($("viewer").classList.contains("open")) closeViewer(); else closeSheets(); return; }
+        if (open) return;
+        if (e.key === "]") { e.stopPropagation(); go(cur + 1); }
+        else if (e.key === "[") { e.stopPropagation(); go(cur - 1); }
+        else if (e.key === "m") { e.stopPropagation(); openPrompt(); }
+      }, true);
+      // A focused button activates on keyup: keep Space from clicking it as well.
+      document.addEventListener("keyup", function (e) { if (e.key === " " && !typing(e)) e.preventDefault(); }, true);
+
+      rail();
+      fetch("milestones.json").then(function (r) { return r.ok ? r.json() : []; }).then(function (j) {
+        MS = j || [];
+        if (!MS.length) return;
+        $("ms-link").classList.remove("hidden");
+        renderMilestones(); msButton(CHAPTERS[cur]);
+        var mh = location.hash.match(/^#m=([\w.-]+)/); if (mh) openMilestones(mh[1]);
+      }).catch(function () {});
+      var h = decodeURIComponent(location.hash.slice(1)), i0 = CHAPTERS.findIndex(function (c) { return c.id === h; });
+      go(i0 >= 0 ? i0 : 0);
+    </script>
+  </body>
+</html>

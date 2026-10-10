@@ -1,0 +1,10 @@
+● A numbered list from earlier, marked (Recommended):
+  1. Something (Recommended)
+  2. Else
+────────────────────────────────────────────────────────────────────────────
+Which file?
+
+❯ 1. notes.md
+  2. report.txt
+
+Enter to select · ↑/↓ to navigate · Esc to cancel

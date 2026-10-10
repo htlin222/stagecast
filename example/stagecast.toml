@@ -5,7 +5,8 @@
 name    = "meta-pipe"
 title   = "A network meta-analysis, start to finish"
 blurb   = "Neoadjuvant anti-HER2 therapy in early breast cancer — ten gated stages, typed, unedited"
-workdir = "."                     # where the agent runs
+workdir = "/srv/meta-pipe"         # where the agent runs — outside $HOME, so no
+                                  # ancestor CLAUDE.md shapes the recorded session
 repo    = "https://github.com/htlin222/meta-pipe"
 
 # Shown in the header. Purely descriptive; nothing reads them back.
@@ -19,12 +20,25 @@ facts = [
 cols       = 118                  # 16:9 once the cell aspect is accounted for
 rows       = 28                   # see docs/DESIGN.md § The terminal
 agent      = "claude --dangerously-skip-permissions"
-idle_limit = 2                    # seconds; longer waits compress to this
 socket     = "stagecast"
+mode       = "continuous"         # one session; each stage is the next message
+preset     = "claude-code"        # project settings only, light theme, Stop hook, env scrub
+answer_questions = "recommended"  # take the (Recommended) option of an AskUserQuestion
+# mcp_config = "mcp.json"
+
+# How the raw recording is compressed for playback. Defaults shown.
+[postprocess]
+idle_limit = 2                    # any longer gap plays as this
+head       = 20                   # first seconds of each turn at 1x
+foot       = 15                   # last seconds of each turn at 1x
+fast       = 8                    # the middle of a turn, this many times faster
+hold       = 8                    # a finished answer stays on screen this long
 
 # Each stage is one chapter. `verify` runs with the working directory at
-# `project.workdir` and decides, on its own, whether the stage finished:
-# a passing check is the completion signal, never a guess about idleness.
+# `project.workdir` and decides, with the Stop hook, whether the stage finished:
+# the turn that received the prompt ended AND the check passes — never a guess
+# about idleness. `stagecast-check` (on PATH while verify runs) scopes a check
+# to after the chapter started: `stagecast-check saved 05 review`, `edited 06 05`.
 [[stage]]
 id      = "01"
 name    = "Protocol"

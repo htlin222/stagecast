@@ -26,7 +26,7 @@ mkdir -p "$HERE/.tmp-splice"; command cp "$HERE/fixtures/spliced-quit.cast" "$HE
 t=$((t+2))
 run "$HERE/.tmp-splice" && { echo "✖ lint passed a quit spliced into the output"; f=$((f+1)); } || echo "✓ rejects the spliced quit"
 uv run --no-project python "$L" /dev/null "$HERE/.tmp-splice" 2>&1 | grep -q "before the output stopped" && echo "✓ names the spliced quit" || { echo "✖ missed the spliced quit"; f=$((f+1)); }
-rip "$HERE/.tmp-splice" 2>/dev/null
+rm -rf "$HERE/.tmp-splice"
 
-rip "$HERE/.tmp-bad" "$HERE/.tmp-ok" 2>/dev/null
+rm -rf "$HERE/.tmp-bad" "$HERE/.tmp-ok"
 [ "$f" = 0 ] && { echo "all $t checks pass"; exit 0; } || { echo "$f of $t failed"; exit 1; }

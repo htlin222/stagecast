@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check that a rendered frame's background really is the colour it was asked to be.
 
-    uv run --with pillow --no-project live-demo/verify_background.py <gif> [#rrggbb]
+    uv run --with pillow --no-project tools/verify_background.py <gif> [#rrggbb]
 
 Frames from this recording end up on slides, and a slide background is white, so
 a tinted terminal background shows as a grey rectangle the moment it is pasted in.

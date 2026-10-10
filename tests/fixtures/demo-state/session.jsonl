@@ -1,0 +1,12 @@
+{"t": 1791596558.1048203, "event": "start", "take": "take-001-01.cast", "stage": "01"}
+{"t": 1791596558.215775, "event": "t0", "take": "take-001-01.cast"}
+{"t": 1791596563.1264393, "event": "ready", "take": "take-001-01.cast"}
+{"t": 1791596575.1850402, "event": "stop", "take": "take-001-01.cast"}
+{"t": 1791596579.297427, "event": "start", "take": "take-002-02.cast", "stage": "02"}
+{"t": 1791596579.399295, "event": "t0", "take": "take-002-02.cast"}
+{"t": 1791596584.3249562, "event": "ready", "take": "take-002-02.cast"}
+{"t": 1791596596.3877397, "event": "stop", "take": "take-002-02.cast"}
+{"t": 1791596600.516195, "event": "start", "take": "take-003-03.cast", "stage": "03"}
+{"t": 1791596600.607362, "event": "t0", "take": "take-003-03.cast"}
+{"t": 1791596605.5393028, "event": "ready", "take": "take-003-03.cast"}
+{"t": 1791596617.6028662, "event": "stop", "take": "take-003-03.cast"}

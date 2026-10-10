@@ -26,7 +26,8 @@ facts = [
 cols       = 118       # 16:9 once the cell aspect is measured
 rows       = 28
 agent      = "claude"
-idle_limit = 2
+# mode   = "continuous"    # one session for every stage — right for an agent
+# preset = "claude-code"   # keep your own ~/.claude setup out of the recording
 
 [site]
 emphasise = []         # phrases to bold in the chapter briefs

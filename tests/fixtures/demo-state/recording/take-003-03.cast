@@ -1,0 +1,9 @@
+{"version": 2, "width": 118, "height": 28, "timestamp": 1791596600, "idle_time_limit": 86400.0, "env": {"SHELL": "/bin/bash", "TERM": "tmux-256color"}}
+[0.00987, "o", "worker — reads an instruction, does one thing, says what it did\r\n\r\n› "]
+[4.951675, "o", "Write a summary that includes the report, and say what each stage was gated on."]
+[6.955785, "o", "\r\n"]
+[6.956046, "o", "  writing SUMMARY.md\r\n"]
+[7.9627, "o", "  SUMMARY.md · 5 lines\r\n\r\n› "]
+[17.005714, "o", "exit"]
+[18.011269, "o", "\r\n"]
+[18.011624, "o", "\r\n"]

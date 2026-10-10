@@ -1,14 +1,24 @@
 #!/usr/bin/env bash
 # Optional belt and braces: nothing here guesses whether the agent is idle, it
-# only re-reads the plan and re-evaluates each check. Useful when the plan is
-# being corrected while a long run is in flight — the driver holds its copy in
-# memory, this one does not.
+# only re-reads stagecast.toml and re-evaluates each check. Useful when the
+# config is being corrected while a long run is in flight.
+#
+#   lib/sentinel-watch.sh [stagecast.toml]
 set -uo pipefail
-PLAN="${SC_PLAN:?}"; W="${SC_WORKDIR:-.}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CFG="$(cd "$(dirname "${1:-stagecast.toml}")" && pwd)/$(basename "${1:-stagecast.toml}")"
 while :; do
-  while IFS=$'\t' read -r id _ _ check; do
-    ( cd "$W" && eval "$check" ) >/dev/null 2>&1 \
-      && printf '%s ✓ %s check passes\n' "$(date -u +%H:%M:%S)" "$id"
-  done < "$PLAN"
+  uv run --quiet --no-project python - "$CFG" "$HERE/../tools" <<'PY'
+import os, subprocess, sys, time
+sys.path.insert(0, sys.argv[2])
+import sc_config as C
+cfg = C.load(sys.argv[1])
+env = dict(os.environ, STAGECAST_STATE=str(cfg["state"]),
+           PATH=f"{C.FRAMEWORK / 'lib' / 'bin'}:{os.environ['PATH']}")
+for s in cfg["stages"]:
+    if subprocess.run(["bash", "-c", s.get("verify", "false")], cwd=cfg["workdir"],
+                      env=env, capture_output=True).returncode == 0:
+        print(time.strftime("%H:%M:%S", time.gmtime()), "✓", s["id"], "check passes", flush=True)
+PY
   sleep "${SC_WATCH_INTERVAL:-30}"
 done

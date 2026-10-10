@@ -26,7 +26,6 @@ facts = [
 cols       = 118
 rows       = 28
 agent      = "bash --noprofile --norc ../worker.sh"
-idle_limit = 2
 socket     = "stagecast-demo"
 # The worker reads with `read -r`, which does not consume the bracketed-paste
 # markers, so they would be echoed. It wants no clear key either — and leaves on

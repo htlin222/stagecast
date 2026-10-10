@@ -1,0 +1,22 @@
+❯ Plan the analysis for me
+
+● Here is what I would consider:
+
+  1. Propensity score matching
+  2. Inverse probability weighting (Recommended)
+  3. Multivariable regression
+
+  Let me ask which one you prefer.
+
+────────────────────────────────────────────────────────────────────────────
+ ☐ Method
+
+Which method should the primary analysis use?
+
+❯ 1. Multivariable Cox regression
+     Adjusts for covariates directly
+  2. Propensity score weighting (Recommended)
+     Balances groups before comparing
+  3. Type something.
+
+Enter to select · ↑/↓ to navigate · Esc to cancel
